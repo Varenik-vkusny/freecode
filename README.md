@@ -1,10 +1,19 @@
 # FreeCode
 
-FreeCode is an agentic coding assistant with a native, fast, and responsive user interface powered by Tauri and Next.js, backed by a Python sidecar server.
+FreeCode is an agentic coding assistant with a native desktop interface powered by **Tauri v2**, **Next.js**, and a **Python** sidecar server.
 
-## Quick Start
+## Features
+- **Native UI**: Built with Tauri v2 for speed and low resource usage.
+- **Agentic Engine**: Python backend handles filesystem, shell, and AI reasoning.
+- **Clean Interface**: Redesigned sidebar, search, and session management.
+- **Auto-Setup**: Detects Rust/MSVC for Tauri mode, or falls back to pywebview automatically.
 
-It requires **Node.js** and **Python 3**. All other dependencies (like virtual environments and module installations) are handled automatically.
+## Requirements
+- **Node.js**
+- **Python 3**
+- (Optional) **Rust & MSVC Build Tools** for native performance.
+
+## Getting Started
 
 1. **Clone the repository:**
    ```bash
@@ -12,14 +21,8 @@ It requires **Node.js** and **Python 3**. All other dependencies (like virtual e
    cd freecode
    ```
 
-2. **Launch the application:**
-   - **Windows:**
-     ```cmd
-     start.bat
-     ```
-   - **Linux / macOS:**
-     ```bash
-     bash start.sh
-     ```
+2. **Run the application:**
+   - **Windows:** `start.bat`
+   - **Linux/macOS:** `start.sh`
 
-*Note: The script automatically detects your environment. If you have Rust and the MSVC C++ Build Tools installed, it will launch seamlessly via Tauri for peak performance. If you don't, it will automatically fall back to the built-in Pywebview wrapper without requiring any extra setup.*
+The script will automatically handle virtual environment creation and dependency installation.
