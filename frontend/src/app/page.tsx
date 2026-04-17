@@ -552,10 +552,9 @@ export default function Home() {
 
   const handleOnboardingComplete = useCallback(async (apiKey: string) => {
     saveApiKey(apiKey);
-    await sendConfigToBackend(apiKey);
     setShowOnboarding(false);
 
-    // Reconnect WebSocket so backend picks up the new API key for fresh sessions
+    // Reconnect WebSocket so backend picks up the new API key
     if (wsRef.current) {
       wsRef.current.close();
     }
@@ -759,8 +758,16 @@ export default function Home() {
         const savedSes = (() => { try { return JSON.parse(localStorage.getItem("freecode:sessions") || "{}"); } catch { return {}; } })();
         const sesId = localStorage.getItem(SESSION_ID_KEY) || sessionId;
         const sesDir = savedSes[sesId]?.workingDir || savedDir;
+        const apiKey = localStorage.getItem("freecode:api_key");
         if (sesDir) {
-          ws.send(JSON.stringify({ type: "user_input", text: "__init__", session_id: sesId, working_dir: sesDir, model: localStorage.getItem("freecode:model") || DEFAULT_MODEL }));
+          ws.send(JSON.stringify({ 
+            type: "user_input", 
+            text: "__init__", 
+            session_id: sesId, 
+            working_dir: sesDir, 
+            api_key: apiKey,
+            model: localStorage.getItem("freecode:model") || DEFAULT_MODEL 
+          }));
           // Request sessions list for this working dir
           ws.send(JSON.stringify({ type: "list_sessions", working_dir: sesDir, session_id: sesId }));
         }

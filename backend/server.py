@@ -3,16 +3,17 @@
 import asyncio
 import json
 import os
-from pathlib import Path
+import sys
 import logging
+import platform
+from pathlib import Path
 from datetime import datetime
+
 import websockets
-import signal
 
 
 
 # Add parent to path so we can import agent_core
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agent_core import Agent
@@ -26,12 +27,15 @@ import json as _json
 _ROOT = Path(__file__).parent.parent
 
 def _get_config_path() -> Path:
-    """Get freecode.json path from install directory or repo root."""
-    if getattr(sys, "frozen", False):
-        # Bundled exe: use the same directory
-        return Path(sys.executable).parent / "freecode.json"
-    # Dev mode: use repo root
-    return _ROOT / "freecode.json"
+    """Get freecode.json path from user config directory."""
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", "~")).resolve()
+    else:
+        base = Path("~/.config").expanduser().resolve()
+    
+    config_dir = base / "FreeCode"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / "freecode.json"
 
 _CONFIG_PATH = _get_config_path()
 
@@ -104,19 +108,24 @@ def list_sessions_from_disk(working_dir: str) -> list:
 
 def _save_working_dir(path: str):
     try:
+        abs_path = str(Path(path).resolve())
+        # Ensure the directory exists
+        Path(abs_path).mkdir(parents=True, exist_ok=True)
+        # Also ensure .freecode exists immediately
+        (Path(abs_path) / ".freecode").mkdir(parents=True, exist_ok=True)
+        
         try:
             cfg = _json.loads(_CONFIG_PATH.read_text())
         except (FileNotFoundError, _json.JSONDecodeError):
             cfg = {}
-        recents = [path] + [d for d in cfg.get("recent_dirs", []) if d != path]
-        cfg["working_dir"] = path
+        recents = [abs_path] + [d for d in cfg.get("recent_dirs", []) if d != abs_path]
+        cfg["working_dir"] = abs_path
         cfg["recent_dirs"] = recents[:5]
         _CONFIG_PATH.write_text(_json.dumps(cfg, indent=2))
     except Exception as e:
         logger.warning(f"Could not save working_dir to freecode.json: {e}")
 
 
-# Load config from freecode.json
 def _load_config() -> dict:
     try:
         if _CONFIG_PATH.exists():
@@ -124,6 +133,19 @@ def _load_config() -> dict:
     except Exception:
         pass
     return {}
+
+def _save_api_key(api_key: str):
+    try:
+        try:
+            cfg = _json.loads(_CONFIG_PATH.read_text())
+        except (FileNotFoundError, _json.JSONDecodeError):
+            cfg = {}
+        cfg["api_key"] = api_key
+        _CONFIG_PATH.write_text(_json.dumps(cfg, indent=2))
+        global API_KEY
+        API_KEY = api_key
+    except Exception as e:
+        logger.warning(f"Could not save api_key to freecode.json: {e}")
 
 _cfg = _load_config()
 API_KEY = _cfg.get("api_key")
@@ -326,6 +348,9 @@ async def handle_client(websocket):
                     # Internal init ping — just registers session + working dir, no response needed
                     if msg.text == "__init__":
                         logger.info(f"[{session_id}] Session initialized, working_dir={session.agent.state.working_dir}")
+                        if data.get("api_key"):
+                            _save_api_key(data["api_key"])
+                            session.agent.client.api_key = data["api_key"]
                         continue
 
                     logger.info(f"[{session_id}] User input: {msg.text[:60]}...")
