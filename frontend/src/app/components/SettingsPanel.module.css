@@ -1,14 +1,12 @@
 .overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 999;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
 }
 
 .panel {
@@ -16,53 +14,44 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   width: 100%;
-  max-width: 450px;
-  max-height: 80vh;
+  max-width: 480px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-  animation: slideIn 0.3s ease-out;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: var(--font-mono);
 }
 
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 18px 24px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .header h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--fg-default);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .closeBtn {
   background: none;
   border: none;
   color: var(--fg-muted);
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
+  padding: 4px;
+  transition: color 0.15s;
 }
 
 .closeBtn:hover {
@@ -71,11 +60,9 @@
 
 .content {
   padding: 24px;
-  overflow-y: auto;
-  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .section {
@@ -84,10 +71,44 @@
   gap: 8px;
 }
 
+.labelRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
 .label {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--fg-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.keyActions {
+    display: flex;
+    gap: 12px;
+}
+
+.actionLink {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+}
+
+.actionLink:hover {
+    text-decoration: underline;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
 }
 
 .input {
@@ -97,62 +118,81 @@
   padding: 10px 12px;
   color: var(--fg-default);
   font-size: 13px;
-  font-family: var(--font-mono);
+  font-family: inherit;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.15s;
+  flex: 1;
 }
 
 .input:focus {
-  border-color: var(--border-active);
+  border-color: var(--accent);
 }
 
-.input::placeholder {
-  color: #555;
+.browseBtn {
+    background: var(--bg-step);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--fg-muted);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 0 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+}
+
+.browseBtn:hover {
+    border-color: var(--fg-muted);
+    color: var(--fg-default);
 }
 
 .error {
   color: var(--status-error);
   font-size: 12px;
   margin: 0;
-  padding: 8px;
   background: rgba(248, 81, 73, 0.1);
-  border: 1px solid rgba(248, 81, 73, 0.2);
+  padding: 10px;
   border-radius: 4px;
+  border-left: 2px solid var(--status-error);
 }
 
 .success {
   color: var(--status-success);
   font-size: 12px;
   margin: 0;
-  padding: 8px;
   background: rgba(63, 185, 80, 0.1);
-  border: 1px solid rgba(63, 185, 80, 0.2);
+  padding: 10px;
   border-radius: 4px;
+  border-left: 2px solid var(--status-success);
 }
 
 .buttons {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 16px;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 20px;
   border-top: 1px solid var(--border-subtle);
 }
 
 .buttonPrimary,
 .buttonSecondary {
-  padding: 10px 16px;
+  padding: 10px 20px;
   border: none;
   border-radius: 4px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .buttonPrimary {
   background: var(--accent);
   color: #000;
-  flex: 1;
 }
 
 .buttonPrimary:hover {
@@ -160,14 +200,12 @@
 }
 
 .buttonSecondary {
-  background: var(--bg-step);
+  background: var(--bg-main);
   border: 1px solid var(--border-subtle);
   color: var(--fg-muted);
-  flex: 1;
 }
 
 .buttonSecondary:hover {
   background: var(--border-subtle);
   color: var(--fg-default);
 }
-

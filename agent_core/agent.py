@@ -172,7 +172,8 @@ class Agent:
         for msg in messages:
             contents.append(
                 types.Content(
-                    role=msg["role"], parts=[types.Part(text=msg["content"])]
+                    role="user" if msg["role"] == "tool" else msg["role"], 
+                    parts=[types.Part(text=msg["content"])]
                 )
             )
 
@@ -255,7 +256,7 @@ class Agent:
         yield {"type": "tool_result", "name": tool_name, "result": result}
 
         # Add tool result to history and continue
-        self.state.add_message("user", f"Tool Result ({tool_name}):\n{result}")
+        self.state.add_message("tool", f"Tool Result ({tool_name}):\n{result}")
 
         # Recurse: call model again with updated history
         new_messages = [

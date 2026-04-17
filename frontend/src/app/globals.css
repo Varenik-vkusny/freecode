@@ -240,7 +240,7 @@ html, body {
 .welcome-divider { color: var(--dim3); font-size: 10px; letter-spacing: -1px; opacity: 0.5; overflow: hidden; white-space: nowrap; }
 
 /* ── Input Section (Floating) ────────────────────────────── */
-.input-outer { padding: 0 40px 20px; background: transparent; position: relative; }
+.input-outer { padding: 0 40px 12px; background: transparent; position: relative; }
 .input-container { position: relative; }
 .input-box {
   background: #161b22;
@@ -356,10 +356,10 @@ html, body {
 
 /* ── Context & Usage Bar ───────────────────────────────── */
 .ctx-bar { 
-  display: flex; align-items: center; gap: 16px; padding: 6px 14px; 
-  background: #010409; border-top: 1px solid var(--border); font-size: 11px; color: var(--dim);
+  display: flex; align-items: center; gap: 16px; padding: 4px 14px; 
+  background: var(--bg-main); border-top: 1px solid var(--border-subtle); font-size: 10px; color: var(--fg-muted);
 }
-.ctx-bar-track { flex: 1; height: 2px; background: var(--dim3); position: relative; border-radius: 1px; }
+.ctx-bar-track { flex: 1; height: 1px; background: var(--border-subtle); position: relative; border-radius: 1px; }
 .ctx-bar-fill { height: 100%; background: var(--dim2); transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 1px; }
 .ctx-bar-warn .ctx-bar-fill { background: var(--accent-blue); }
 .ctx-bar-label { white-space: nowrap; color: var(--dim2); font-weight: 500; }
@@ -373,10 +373,23 @@ html, body {
 /* ── Status Bar Fixes ──────────────────────────────────── */
 .effort-cell { display: flex; align-items: center; min-width: 100px; justify-content: flex-end; }
 .effort-icon { display: inline-block; width: 45px; text-align: left; margin-left: 8px; color: inherit; font-family: monospace; }
-.effort-icon[data-effort="HIGH"] { color: var(--status-error); }
-.effort-icon[data-effort="MEDIUM"] { color: var(--status-warning); }
-.effort-icon[data-effort="LOW"] { color: var(--status-success); }
-.effort-icon[data-effort="MINIMAL"] { color: var(--fg-muted); }
+/* ── Effort Bars ───────────────────────────────────────── */
+.effort-bars { display: flex; align-items: flex-end; gap: 2px; height: 12px; padding: 0 4px; }
+.effort-bar { width: 3px; background: var(--bg-step); border-radius: 1px; transition: all 0.2s; }
+.effort-bar:nth-child(1) { height: 4px; }
+.effort-bar:nth-child(2) { height: 7px; }
+.effort-bar:nth-child(3) { height: 10px; }
+.effort-bar:nth-child(4) { height: 13px; }
+
+.effort-bar[data-active="true"] { background: currentColor; }
+.effort-bars[data-effort="HIGH"] { color: var(--status-error); }
+.effort-bars[data-effort="MEDIUM"] { color: var(--status-warning); }
+.effort-bars[data-effort="LOW"] { color: var(--status-success); }
+.effort-bars[data-effort="MINIMAL"] { color: var(--fg-muted); }
+
+/* ── Tool Blocks & Formatting ────────────────────────── */
+.msg-assistant code { color: var(--accent); background: rgba(88, 166, 255, 0.1); padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; }
+.msg-user .msg-content { color: var(--fg-default); font-weight: 500; }
 
 /* ── Working Indicator Alignment ────────────────────────── */
 .working-indicator { 

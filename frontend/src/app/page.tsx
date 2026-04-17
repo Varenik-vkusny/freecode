@@ -71,19 +71,35 @@ function shortenPath(path: string | null): string {
 // Effort levels styling handled in globals.css via data-effort attribute.
 
 
-const EFFORT_BARS = ["▂", "▄", "▆", "█"];
 const EFFORT_FILL: Record<string, number> = { MINIMAL: 1, LOW: 2, MEDIUM: 3, HIGH: 4 };
 
 function EffortIcon({ effort }: { effort: string }) {
   const fill = EFFORT_FILL[effort] ?? 3;
   return (
-    <span className="effort-icon" data-effort={effort}>
-      {EFFORT_BARS.map((bar, i) => (
-        <span key={i} style={{ opacity: i < fill ? 1 : 0.18 }}>{bar}</span>
+    <div className="effort-bars" data-effort={effort}>
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="effort-bar" data-active={i <= fill} />
       ))}
-    </span>
+    </div>
   );
 }
+
+const FolderIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.7 }}>
+        <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3h-6.5L6.47 1.47a.75.75 0 0 0-.53-.22H1.75Z" />
+    </svg>
+);
+
+const SettingsIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.8 }}>
+        <path d="M11.5 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2Z" />
+        <path d="M1 3.75a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75ZM12.5 3a.75.75 0 0 1 0 1.5h1.75a.75.75 0 0 1 0-1.5h-1.75Z" />
+        <path d="M4.5 6a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2Z" />
+        <path d="M6.5 7.75a.75.75 0 0 1 0 1.5h7.75a.75.75 0 0 1 0-1.5H6.5ZM1.75 7a.75.75 0 0 0 0 1.5h.75a.75.75 0 0 0 0-1.5h-.75Z" />
+        <path d="M11.5 10a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2Z" />
+        <path d="M1 11.75a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75ZM12.5 11a.75.75 0 0 1 0 1.5h1.75a.75.75 0 0 1 0-1.5h-1.75Z" />
+    </svg>
+);
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -480,8 +496,14 @@ export default function Home() {
   // Track pending tool calls so we can attach results
   const pendingToolRef = useRef<Map<string, number>>(new Map());
 
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  const messagesAreaRef = useRef<HTMLDivElement>(null);
+  const scrollToBottom = useCallback((force = false) => {
+    if (!messagesAreaRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesAreaRef.current;
+    const isAtBottom = scrollHeight - scrollTop <= clientHeight + 100;
+    if (force || isAtBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, []);
 
   const [onboardingFolderPickerCallback, setOnboardingFolderPickerCallback] = useState<((path: string) => void) | null>(null);
@@ -528,7 +550,8 @@ export default function Home() {
         if (!hasConversation && msg.messages && msg.messages.length > 0) {
           return msg.messages.map((m: any) => {
             if (m.role === "user") return { kind: "user", text: m.content };
-            if (m.role === "assistant") return { kind: "response", chunks: [m.content] };
+            if (m.role === "model") return { kind: "response", chunks: [m.content] };
+            if (m.role === "tool") return { kind: "tool_result", name: "Result", args: {}, result: m.content };
             if (m.role === "system") return { kind: "system", text: m.content };
             return { kind: "system", text: m.content }; // fallback
           });
@@ -652,7 +675,7 @@ export default function Home() {
       return next;
     });
 
-    setTimeout(scrollToBottom, 20);
+    setTimeout(() => scrollToBottom(), 20);
 
     // Persist to localStorage and update session list (without cascading render)
     setMessages(msgs => {
@@ -822,7 +845,7 @@ export default function Home() {
       setSavedSessions(sessions);
       return next;
     });
-    setTimeout(scrollToBottom, 20);
+    setTimeout(() => scrollToBottom(true), 20);
     wsRef.current.send(JSON.stringify({ type: "user_input", text, effort, working_dir: workingDir ?? ".", model, session_id: sessionId }));
   }, [input, paletteOpen, paletteMatches, paletteIdx, runCommand, scrollToBottom, model, workingDir, effort, sessionId]);
 
@@ -946,7 +969,11 @@ export default function Home() {
       />
 
       {/* Settings panel */}
-      <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsPanel 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)} 
+        onBrowseSettings={handleBrowseSettingsFolder}
+      />
 
       {/* Model picker overlay */}
       {modelPickerOpen && (
@@ -1046,7 +1073,7 @@ export default function Home() {
 
         <div className="chat-col">
           {/* Messages area */}
-          <div className="messages-area">
+          <div className="messages-area" ref={messagesAreaRef}>
             <Welcome show={messages.length === 0} onOpenDir={() => setWorkingDir(null)} />
             {messages.map(renderMessage)}
             {working && (
@@ -1144,7 +1171,7 @@ export default function Home() {
         </div>
         <div className="status-right">
           <div className="status-item clickable" onClick={() => setWorkingDir(null)}>
-            <span style={{ fontSize: 14 }}>📁</span>
+            <FolderIcon />
             <span className="status-val">{shortenPath(workingDir)}</span>
           </div>
           <span className="sep">·</span>
@@ -1153,7 +1180,9 @@ export default function Home() {
             <EffortIcon effort={effort} />
           </div>
           <span className="sep">·</span>
-          <span className="status-val clickable" onClick={() => setShowSettings(true)} title="Open settings" style={{ fontSize: 14 }}>⚙</span>
+          <div className="status-item clickable" onClick={() => setShowSettings(true)} title="Open settings">
+            <SettingsIcon />
+          </div>
         </div>
       </div>
     </div>
