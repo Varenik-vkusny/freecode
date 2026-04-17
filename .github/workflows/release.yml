@@ -47,6 +47,9 @@ jobs:
           python -m pip install pyinstaller
           python scripts/prepare_sidecar.py
 
+      - name: Generate Icons
+        run: npx tauri icon assets/logo.svg
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
