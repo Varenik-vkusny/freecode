@@ -10,15 +10,15 @@
 }
 
 .modal {
-  background: #0e0e0e;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
+  background: var(--bg-step);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
   padding: 28px;
   max-width: 420px;
   width: 100%;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
   animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 @keyframes slideIn {
@@ -28,7 +28,7 @@
 
 .onboardingHeader {
   margin-bottom: 22px;
-  border-bottom: 1px solid #1a1a1a;
+  border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 18px;
 }
 
@@ -36,13 +36,13 @@
   font-size: 15px;
   font-weight: 700;
   margin: 0 0 5px 0;
-  color: #e8e8e8;
+  color: var(--fg-default);
   letter-spacing: 0.02em;
 }
 
 .subtitle {
   font-size: 11px;
-  color: #777;
+  color: var(--fg-muted);
   margin: 0;
 }
 
@@ -61,33 +61,33 @@
 .label {
   font-size: 10px;
   font-weight: 700;
-  color: #999;
+  color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .description {
   font-size: 11px;
-  color: #666;
+  color: var(--fg-muted);
   margin: 0;
   line-height: 1.5;
 }
 
 .link {
-  color: #d17757;
+  color: var(--accent);
   text-decoration: none;
 }
 
 .link:hover {
-  color: #e08060;
+  text-decoration: underline;
 }
 
 .input {
-  background: #060606;
-  border: 1px solid #333;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   padding: 10px 12px;
-  color: #e8e8e8;
+  color: var(--fg-default);
   font-size: 12px;
   font-family: inherit;
   outline: none;
@@ -96,7 +96,7 @@
 }
 
 .input:focus {
-  border-color: #d17757;
+  border-color: var(--accent);
 }
 
 .folderRow {
@@ -110,10 +110,10 @@
 }
 
 .browseBtn {
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--bg-step);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  color: #999;
+  color: var(--fg-muted);
   font-family: inherit;
   font-size: 11px;
   padding: 0 12px;
@@ -123,8 +123,8 @@
 }
 
 .browseBtn:hover {
-  border-color: #555;
-  color: #ccc;
+  border-color: var(--fg-muted);
+  color: var(--fg-default);
 }
 
 .browseBtn:disabled {
@@ -137,13 +137,13 @@
 }
 
 .error {
-  color: #ff5555;
+  color: var(--status-error);
   font-size: 11px;
   margin: 0;
-  background: rgba(255, 85, 85, 0.08);
+  background: rgba(248, 81, 73, 0.08);
   padding: 8px 10px;
   border-radius: 4px;
-  border-left: 2px solid #ff5555;
+  border-left: 2px solid var(--status-error);
 }
 
 .onboardingFooter {
@@ -151,7 +151,7 @@
   flex-direction: column;
   gap: 10px;
   padding-top: 16px;
-  border-top: 1px solid #1a1a1a;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .buttonPrimary {
@@ -162,20 +162,21 @@
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  background: #d17757;
+  background: var(--accent);
   color: #000;
-  transition: background 0.15s;
+  transition: opacity 0.15s;
   width: 100%;
   letter-spacing: 0.03em;
 }
 
 .buttonPrimary:hover {
-  background: #e08060;
+  opacity: 0.9;
 }
 
 .footerNote {
   font-size: 10px;
-  color: #555;
+  color: var(--fg-muted);
   margin: 0;
   text-align: center;
 }
+

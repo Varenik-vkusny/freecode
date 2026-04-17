@@ -68,26 +68,18 @@ function shortenPath(path: string | null): string {
   return path.length > 30 ? "..." + path.slice(-27) : path;
 }
 
-function getEffortColor(effort: string): string {
-  switch (effort) {
-    case "MINIMAL": return "#555";
-    case "LOW":     return "#4a9";
-    case "MEDIUM":  return "#da4";
-    case "HIGH":    return "#d75";
-    default:        return "#666";
-  }
-}
+// Effort levels styling handled in globals.css via data-effort attribute.
+
 
 const EFFORT_BARS = ["▂", "▄", "▆", "█"];
 const EFFORT_FILL: Record<string, number> = { MINIMAL: 1, LOW: 2, MEDIUM: 3, HIGH: 4 };
 
 function EffortIcon({ effort }: { effort: string }) {
   const fill = EFFORT_FILL[effort] ?? 3;
-  const color = getEffortColor(effort);
   return (
-    <span className="effort-icon">
+    <span className="effort-icon" data-effort={effort}>
       {EFFORT_BARS.map((bar, i) => (
-        <span key={i} style={{ color, opacity: i < fill ? 1 : 0.18 }}>{bar}</span>
+        <span key={i} style={{ opacity: i < fill ? 1 : 0.18 }}>{bar}</span>
       ))}
     </span>
   );

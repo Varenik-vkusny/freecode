@@ -1,0 +1,634 @@
+diff --git a/frontend/src/app/components/ClawdCompanion.tsx b/frontend/src/app/components/ClawdCompanion.tsx
+deleted file mode 100644
+index 34e925f..0000000
+--- a/frontend/src/app/components/ClawdCompanion.tsx
++++ /dev/null
+@@ -1,104 +0,0 @@
+-"use client";
+-
+-import { useState, useEffect } from 'react';
+-
+-// Exact posings from C:\claude-code\src\components\LogoV2\Clawd.tsx
+-const POSES = {
+-  default: {
+-    r1: ' ▐▛███▜▌',
+-    r2: '▝▜█████▛▘',
+-    r3: '  ▘▘ ▝▝  '
+-  },
+-  'look-left': {
+-    r1: ' ▐▟███▟▌',
+-    r2: '▝▜█████▛▘',
+-    r3: '  ▘▘ ▝▝  '
+-  },
+-  'look-right': {
+-    r1: ' ▐▙███▙▌',
+-    r2: '▝▜█████▛▘',
+-    r3: '  ▘▘ ▝▝  '
+-  },
+-  'arms-up': {
+-    r1: '▗▟▛███▜▙▖',
+-    r2: ' ▜█████▛ ',
+-    r3: '  ▘▘ ▝▝  '
+-  }
+-};
+-
+-const IDLE_SEQUENCE: (keyof typeof POSES)[] = ['default', 'default', 'look-left', 'default', 'look-right', 'default'];
+-
+-export default function ClawdCompanion({ speech, isThinking }: { speech?: string, isThinking?: boolean }) {
+-    const [tick, setTick] = useState(0);
+-
+-    useEffect(() => {
+-        const interval = setInterval(() => {
+-            setTick(t => t + 1);
+-        }, 500);
+-        return () => clearInterval(interval);
+-    }, []);
+-
+-    let pose: keyof typeof POSES = IDLE_SEQUENCE[tick % IDLE_SEQUENCE.length];
+-    
+-    if (isThinking) {
+-        // More animated when thinking
+-        const thinkingPoses: (keyof typeof POSES)[] = ['arms-up', 'default', 'look-left', 'look-right'];
+-        pose = thinkingPoses[tick % thinkingPoses.length];
+-    }
+-
+-    const currentPose = POSES[pose];
+-
+-    return (
+-        <div className="companion-container">
+-            {speech && (
+-                <div className="speech-bubble">
+-                    <div className="line-top">╭───────────────────╮</div>
+-                    <div className="line-mid">│ {speech.padEnd(17)} │</div>
+-                    <div className="line-bot">╰──────┬────────────╯</div>
+-                    <div className="tail">      │</div>
+-                </div>
+-            )}
+-            <div className="sprite">
+-                <pre className="sprite-line">{currentPose.r1}</pre>
+-                <pre className="sprite-line">{currentPose.r2}</pre>
+-                <pre className="sprite-line">{currentPose.r3}</pre>
+-            </div>
+-
+-            <style jsx>{`
+-                .companion-container {
+-                    position: absolute;
+-                    bottom: 60px;
+-                    right: 40px;
+-                    display: flex;
+-                    flex-direction: column;
+-                    align-items: center;
+-                    pointer-events: none;
+-                    font-family: 'JetBrains Mono', monospace;
+-                    z-index: 100;
+-                }
+-                .speech-bubble {
+-                    color: #D77757; /* Official claude color: rgb(215, 119, 87) */
+-                    margin-bottom: -5px;
+-                    font-size: 11px;
+-                    line-height: 1;
+-                    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+-                }
+-                .sprite {
+-                    display: flex;
+-                    flex-direction: column;
+-                    align-items: center;
+-                    color: #D77757; 
+-                }
+-                .sprite-line {
+-                    margin: 0;
+-                    padding: 0;
+-                    line-height: 1.0;
+-                    font-size: 14px;
+-                    white-space: pre;
+-                    background: #000;
+-                }
+-                pre { margin: 0; }
+-            `}</style>
+-        </div>
+-    );
+-}
+diff --git a/frontend/src/app/components/OnboardingModal.module.css b/frontend/src/app/components/OnboardingModal.module.css
+index 1e3c6bc..9e325fd 100644
+--- a/frontend/src/app/components/OnboardingModal.module.css
++++ b/frontend/src/app/components/OnboardingModal.module.css
+@@ -10,15 +10,15 @@
+ }
+ 
+ .modal {
+-  background: #0e0e0e;
+-  border: 1px solid #2a2a2a;
+-  border-radius: 8px;
++  background: var(--bg-step);
++  border: 1px solid var(--border-subtle);
++  border-radius: var(--radius);
+   padding: 28px;
+   max-width: 420px;
+   width: 100%;
+   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+   animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+-  font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
++  font-family: var(--font-mono);
+ }
+ 
+ @keyframes slideIn {
+@@ -28,7 +28,7 @@
+ 
+ .onboardingHeader {
+   margin-bottom: 22px;
+-  border-bottom: 1px solid #1a1a1a;
++  border-bottom: 1px solid var(--border-subtle);
+   padding-bottom: 18px;
+ }
+ 
+@@ -36,13 +36,13 @@
+   font-size: 15px;
+   font-weight: 700;
+   margin: 0 0 5px 0;
+-  color: #e8e8e8;
++  color: var(--fg-default);
+   letter-spacing: 0.02em;
+ }
+ 
+ .subtitle {
+   font-size: 11px;
+-  color: #777;
++  color: var(--fg-muted);
+   margin: 0;
+ }
+ 
+@@ -61,33 +61,33 @@
+ .label {
+   font-size: 10px;
+   font-weight: 700;
+-  color: #999;
++  color: var(--fg-muted);
+   text-transform: uppercase;
+   letter-spacing: 0.08em;
+ }
+ 
+ .description {
+   font-size: 11px;
+-  color: #666;
++  color: var(--fg-muted);
+   margin: 0;
+   line-height: 1.5;
+ }
+ 
+ .link {
+-  color: #d17757;
++  color: var(--accent);
+   text-decoration: none;
+ }
+ 
+ .link:hover {
+-  color: #e08060;
++  text-decoration: underline;
+ }
+ 
+ .input {
+-  background: #060606;
+-  border: 1px solid #333;
++  background: var(--bg-input);
++  border: 1px solid var(--border-subtle);
+   border-radius: 4px;
+   padding: 10px 12px;
+-  color: #e8e8e8;
++  color: var(--fg-default);
+   font-size: 12px;
+   font-family: inherit;
+   outline: none;
+@@ -96,7 +96,7 @@
+ }
+ 
+ .input:focus {
+-  border-color: #d17757;
++  border-color: var(--accent);
+ }
+ 
+ .folderRow {
+@@ -110,10 +110,10 @@
+ }
+ 
+ .browseBtn {
+-  background: #1a1a1a;
+-  border: 1px solid #333;
++  background: var(--bg-step);
++  border: 1px solid var(--border-subtle);
+   border-radius: 4px;
+-  color: #999;
++  color: var(--fg-muted);
+   font-family: inherit;
+   font-size: 11px;
+   padding: 0 12px;
+@@ -123,8 +123,8 @@
+ }
+ 
+ .browseBtn:hover {
+-  border-color: #555;
+-  color: #ccc;
++  border-color: var(--fg-muted);
++  color: var(--fg-default);
+ }
+ 
+ .browseBtn:disabled {
+@@ -137,13 +137,13 @@
+ }
+ 
+ .error {
+-  color: #ff5555;
++  color: var(--status-error);
+   font-size: 11px;
+   margin: 0;
+-  background: rgba(255, 85, 85, 0.08);
++  background: rgba(248, 81, 73, 0.08);
+   padding: 8px 10px;
+   border-radius: 4px;
+-  border-left: 2px solid #ff5555;
++  border-left: 2px solid var(--status-error);
+ }
+ 
+ .onboardingFooter {
+@@ -151,7 +151,7 @@
+   flex-direction: column;
+   gap: 10px;
+   padding-top: 16px;
+-  border-top: 1px solid #1a1a1a;
++  border-top: 1px solid var(--border-subtle);
+ }
+ 
+ .buttonPrimary {
+@@ -162,20 +162,21 @@
+   font-weight: 700;
+   font-family: inherit;
+   cursor: pointer;
+-  background: #d17757;
++  background: var(--accent);
+   color: #000;
+-  transition: background 0.15s;
++  transition: opacity 0.15s;
+   width: 100%;
+   letter-spacing: 0.03em;
+ }
+ 
+ .buttonPrimary:hover {
+-  background: #e08060;
++  opacity: 0.9;
+ }
+ 
+ .footerNote {
+   font-size: 10px;
+-  color: #555;
++  color: var(--fg-muted);
+   margin: 0;
+   text-align: center;
+ }
++
+diff --git a/frontend/src/app/components/SettingsPanel.module.css b/frontend/src/app/components/SettingsPanel.module.css
+index 28631cb..944f82a 100644
+--- a/frontend/src/app/components/SettingsPanel.module.css
++++ b/frontend/src/app/components/SettingsPanel.module.css
+@@ -12,9 +12,9 @@
+ }
+ 
+ .panel {
+-  background: #0a0a0a;
+-  border: 1px solid #222;
+-  border-radius: 8px;
++  background: var(--bg-step);
++  border: 1px solid var(--border-subtle);
++  border-radius: var(--radius);
+   width: 100%;
+   max-width: 450px;
+   max-height: 80vh;
+@@ -40,20 +40,20 @@
+   justify-content: space-between;
+   align-items: center;
+   padding: 16px 24px;
+-  border-bottom: 1px solid #1a1a1a;
++  border-bottom: 1px solid var(--border-subtle);
+ }
+ 
+ .header h2 {
+   margin: 0;
+   font-size: 18px;
+   font-weight: 600;
+-  color: #fff;
++  color: var(--fg-default);
+ }
+ 
+ .closeBtn {
+   background: none;
+   border: none;
+-  color: #888;
++  color: var(--fg-muted);
+   font-size: 20px;
+   cursor: pointer;
+   padding: 0;
+@@ -66,7 +66,7 @@
+ }
+ 
+ .closeBtn:hover {
+-  color: #ccc;
++  color: var(--fg-default);
+ }
+ 
+ .content {
+@@ -87,23 +87,23 @@
+ .label {
+   font-size: 13px;
+   font-weight: 500;
+-  color: #ccc;
++  color: var(--fg-muted);
+ }
+ 
+ .input {
+-  background: #1a1a1a;
+-  border: 1px solid #333;
++  background: var(--bg-input);
++  border: 1px solid var(--border-subtle);
+   border-radius: 4px;
+   padding: 10px 12px;
+-  color: #fff;
++  color: var(--fg-default);
+   font-size: 13px;
+-  font-family: monospace;
++  font-family: var(--font-mono);
+   outline: none;
+   transition: border-color 0.2s;
+ }
+ 
+ .input:focus {
+-  border-color: #555;
++  border-color: var(--border-active);
+ }
+ 
+ .input::placeholder {
+@@ -111,22 +111,22 @@
+ }
+ 
+ .error {
+-  color: #dd6666;
++  color: var(--status-error);
+   font-size: 12px;
+   margin: 0;
+   padding: 8px;
+-  background: rgba(221, 102, 102, 0.1);
+-  border: 1px solid rgba(221, 102, 102, 0.2);
++  background: rgba(248, 81, 73, 0.1);
++  border: 1px solid rgba(248, 81, 73, 0.2);
+   border-radius: 4px;
+ }
+ 
+ .success {
+-  color: #66dd66;
++  color: var(--status-success);
+   font-size: 12px;
+   margin: 0;
+   padding: 8px;
+-  background: rgba(102, 221, 102, 0.1);
+-  border: 1px solid rgba(102, 221, 102, 0.2);
++  background: rgba(63, 185, 80, 0.1);
++  border: 1px solid rgba(63, 185, 80, 0.2);
+   border-radius: 4px;
+ }
+ 
+@@ -135,7 +135,7 @@
+   gap: 8px;
+   margin-top: 8px;
+   padding-top: 16px;
+-  border-top: 1px solid #1a1a1a;
++  border-top: 1px solid var(--border-subtle);
+ }
+ 
+ .buttonPrimary,
+@@ -150,22 +150,24 @@
+ }
+ 
+ .buttonPrimary {
+-  background: #4a7;
++  background: var(--accent);
+   color: #000;
+   flex: 1;
+ }
+ 
+ .buttonPrimary:hover {
+-  background: #5b8;
++  opacity: 0.9;
+ }
+ 
+ .buttonSecondary {
+-  background: #333;
+-  color: #ccc;
++  background: var(--bg-step);
++  border: 1px solid var(--border-subtle);
++  color: var(--fg-muted);
+   flex: 1;
+ }
+ 
+ .buttonSecondary:hover {
+-  background: #444;
+-  color: #ddd;
++  background: var(--border-subtle);
++  color: var(--fg-default);
+ }
++
+diff --git a/frontend/src/app/globals.css b/frontend/src/app/globals.css
+index b4145cd..93e8f0f 100644
+--- a/frontend/src/app/globals.css
++++ b/frontend/src/app/globals.css
+@@ -1,25 +1,46 @@
+ :root {
+-  --bg: #0d1117;
+-  --fg: #c9d1d9;
+-  --claude: #d17757;
+-  --dim: #8b949e;
++  --bg-main: #0d1117;
++  --bg-step: #161b22;
++  --bg-input: #010409;
++  
++  --fg-default: #c9d1d9;
++  --fg-muted: #8b949e;
++  
++  --accent: #58a6ff;         /* Primary brand color */
++  --accent-secondary: #d17757; /* For the "Clawd" companion */
++  
++  --border-subtle: #30363d;
++  --border-active: #58a6ff;
++  
++  --status-success: #3fb950;
++  --status-error: #f85149;
++  --status-warning: #d29922;
++  
++  --font-mono: 'JetBrains Mono', 'Geist Mono', monospace;
++  --radius: 8px;
++
++  /* Backward compatibility / mapping */
++  --bg: var(--bg-main);
++  --fg: var(--fg-default);
++  --dim: var(--fg-muted);
+   --dim2: #484f58;
+-  --dim3: #30363d;
+-  --border: #30363d;
+-  --accent-blue: #58a6ff;
+-  --accent-green: #3fb950;
+-  --thinking-bg: #161b22;
+-  --tool-bg: #161b22;
+-  --card-bg: #161b22;
+-  --mono: 'JetBrains Mono', 'Geist Mono', 'SF Mono', 'Cascadia Code', Consolas, monospace;
++  --dim3: var(--border-subtle);
++  --border: var(--border-subtle);
++  --accent-blue: var(--accent);
++  --accent-green: var(--status-success);
++  --thinking-bg: var(--bg-step);
++  --tool-bg: var(--bg-step);
++  --card-bg: var(--bg-step);
++  --mono: var(--font-mono);
+ }
+ 
+ html, body { 
+   height: 100%; 
++  margin: 0; padding: 0;
+   overflow: hidden; 
+-  background: var(--bg); 
+-  color: var(--fg); 
+-  font-family: var(--mono); 
++  background: var(--bg-main); 
++  color: var(--fg-default); 
++  font-family: var(--font-mono); 
+   font-size: 13px; 
+   line-height: 1.6; 
+   user-select: text;
+@@ -43,7 +64,7 @@ html, body {
+ .tb-close:hover { background: #c42b1c !important; color: #fff; }
+ 
+ /* ── Layout ─────────────────────────────────────────────── */
+-.app { display: flex; flex-direction: column; height: 100%; background: var(--bg); }
++.app { display: flex; flex-direction: column; height: calc(100vh - 32px); width: 100%; background: var(--bg-main); }
+ 
+ .main-row { display: flex; flex: 1; overflow: hidden; position: relative; }
+ .chat-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+@@ -58,8 +79,17 @@ html, body {
+ .sidebar-col.closed { transform: translateX(-100%); box-shadow: none; pointer-events: none; }
+ .sidebar-header { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+ .sidebar-title { color: var(--dim2); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; }
+-.sidebar-new-btn { background: transparent; border: none; color: var(--accent-blue); font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+-.sidebar-new-btn:hover { color: #fff; }
++.sidebar-new-btn { 
++  background: var(--bg-step); 
++  border: 1px solid var(--border-subtle); 
++  color: var(--accent); 
++  font-size: 14px; 
++  cursor: pointer; 
++  padding: 2px 8px; 
++  border-radius: 4px;
++  transition: all 0.1s;
++}
++.sidebar-new-btn:hover { background: var(--border-subtle); color: #fff; }
+ 
+ .sidebar-search {
+   background: transparent; border: none; border-bottom: 1px solid var(--border); padding: 12px 14px;
+@@ -136,12 +166,12 @@ html, body {
+ .msg-response strong { color: #fff; font-weight: 700; }
+ .msg-response em { color: #e0e0e0; font-style: italic; }
+ .msg-response code { 
+-  color: #79c0ff; /* Light blue/cyan */
+-  background: transparent;
+-  padding: 0;
+-  border-radius: 0;
+-  font-size: 1em;
+-  font-family: var(--mono);
++  color: var(--accent); /* Unifies code snippets with the theme accent */
++  background: rgba(88, 166, 255, 0.1);
++  padding: 2px 4px;
++  border-radius: 4px;
++  font-size: 0.95em;
++  font-family: var(--font-mono);
+   font-weight: 500;
+ }
+ .msg-response h1 { color: #fff; font-size: 1.3em; font-weight: 700; margin: 16px 0 8px; }
+@@ -288,9 +318,9 @@ html, body {
+ 
+ /* ── Status Bar ──────────────────────────────────────────── */
+ .status-bar {
+-  height: 28px; background: #010409; border-top: 1px solid var(--border);
++  height: 28px; background: #0d1117; border-top: 1px solid var(--border-subtle);
+   display: flex; align-items: center; justify-content: space-between;
+-  padding: 0 14px; font-size: 11px; color: var(--dim); letter-spacing: 0.01em;
++  padding: 0 14px; font-size: 11px; color: var(--fg-muted); letter-spacing: 0.01em;
+ }
+ .status-left, .status-right { display: flex; align-items: center; gap: 16px; }
+ .status-item { display: flex; align-items: center; gap: 6px; }
+@@ -301,9 +331,11 @@ html, body {
+ .status-dot.online { color: var(--accent-green); text-shadow: 0 0 8px rgba(63, 185, 80, 0.4); }
+ .status-dot.offline { color: #f85149; text-shadow: 0 0 8px rgba(248, 81, 73, 0.4); }
+ .status-label { color: var(--dim2); text-transform: lowercase; font-weight: 500; }
+-.status-val { color: var(--dim); transition: color 0.1s; cursor: pointer; }
+-.status-val:hover { color: var(--fg); text-shadow: 0 0 10px rgba(201, 209, 217, 0.3); }
++.status-val { color: var(--fg-default); transition: color 0.1s; cursor: pointer; font-weight: 500; }
++.status-val:hover { color: var(--accent); text-shadow: 0 0 10px rgba(88, 166, 255, 0.3); }
+ .sep { color: var(--dim3); }
++.clickable { cursor: pointer; transition: opacity 0.1s; }
++.clickable:hover { opacity: 0.8; }
+ 
+ /* ── Overlays ────────────────────────────── */
+ .dir-overlay { position: fixed; inset: 32px 0 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
+@@ -341,6 +373,10 @@ html, body {
+ /* ── Status Bar Fixes ──────────────────────────────────── */
+ .effort-cell { display: flex; align-items: center; min-width: 100px; justify-content: flex-end; }
+ .effort-icon { display: inline-block; width: 45px; text-align: left; margin-left: 8px; color: inherit; font-family: monospace; }
++.effort-icon[data-effort="HIGH"] { color: var(--status-error); }
++.effort-icon[data-effort="MEDIUM"] { color: var(--status-warning); }
++.effort-icon[data-effort="LOW"] { color: var(--status-success); }
++.effort-icon[data-effort="MINIMAL"] { color: var(--fg-muted); }
+ 
+ /* ── Working Indicator Alignment ────────────────────────── */
+ .working-indicator { 
+diff --git a/frontend/src/app/page.tsx b/frontend/src/app/page.tsx
+index 94e1062..0eea10b 100644
+--- a/frontend/src/app/page.tsx
++++ b/frontend/src/app/page.tsx
+@@ -68,26 +68,18 @@ function shortenPath(path: string | null): string {
+   return path.length > 30 ? "..." + path.slice(-27) : path;
+ }
+ 
+-function getEffortColor(effort: string): string {
+-  switch (effort) {
+-    case "MINIMAL": return "#555";
+-    case "LOW":     return "#4a9";
+-    case "MEDIUM":  return "#da4";
+-    case "HIGH":    return "#d75";
+-    default:        return "#666";
+-  }
+-}
++// Effort levels styling handled in globals.css via data-effort attribute.
++
+ 
+ const EFFORT_BARS = ["▂", "▄", "▆", "█"];
+ const EFFORT_FILL: Record<string, number> = { MINIMAL: 1, LOW: 2, MEDIUM: 3, HIGH: 4 };
+ 
+ function EffortIcon({ effort }: { effort: string }) {
+   const fill = EFFORT_FILL[effort] ?? 3;
+-  const color = getEffortColor(effort);
+   return (
+-    <span className="effort-icon">
++    <span className="effort-icon" data-effort={effort}>
+       {EFFORT_BARS.map((bar, i) => (
+-        <span key={i} style={{ color, opacity: i < fill ? 1 : 0.18 }}>{bar}</span>
++        <span key={i} style={{ opacity: i < fill ? 1 : 0.18 }}>{bar}</span>
+       ))}
+     </span>
+   );
+diff --git a/scripts/run_webview.py b/scripts/run_webview.py
+index 841acb7..cdf60d2 100644
+--- a/scripts/run_webview.py
++++ b/scripts/run_webview.py
+@@ -134,7 +134,7 @@ def main():
+         height=800,
+         min_size=(600, 400),
+         frameless=True,
+-        background_color="#000000",
++        background_color="#0d1117",
+     )
+ 
+     window.events.loaded += lambda: _enable_resize(window)

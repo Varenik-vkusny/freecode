@@ -134,7 +134,7 @@ def main():
         height=800,
         min_size=(600, 400),
         frameless=True,
-        background_color="#000000",
+        background_color="#0d1117",
     )
 
     window.events.loaded += lambda: _enable_resize(window)
