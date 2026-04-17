@@ -44,6 +44,30 @@ export function hasOnboarded(): boolean {
 }
 
 export async function getConfigFromBackend(): Promise<{ api_key?: string; settings_folder?: string; working_dir?: string } | null> {
+  // 1. Check if running in Tauri
+  const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+  if (isTauri) {
+    try {
+      const { homeDir, join } = await import("@tauri-apps/api/path");
+      const { readTextFile, exists } = await import("@tauri-apps/plugin-fs");
+      
+      const home = await homeDir();
+      const settingsFolder = await join(home, ".freecode");
+      const configPath = await join(settingsFolder, "freecode.json");
+
+      if (await exists(configPath)) {
+        const content = await readTextFile(configPath);
+        return JSON.parse(content);
+      }
+      
+      // Fallback to local root if possible (though less common in a bundled app)
+      return null;
+    } catch (e) {
+      console.error("Tauri config read failed:", e);
+    }
+  }
+
+  // 2. Fallback to Next.js API (browser mode)
   try {
     const response = await fetch("/api/config");
     if (!response.ok) return null;
@@ -58,6 +82,36 @@ export async function sendConfigToBackend(
   apiKey: string,
   settingsFolder: string
 ): Promise<boolean> {
+  // 1. Check if running in Tauri
+  const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+  if (isTauri) {
+    try {
+      const { join } = await import("@tauri-apps/api/path");
+      const { writeTextFile, mkdir, exists } = await import("@tauri-apps/plugin-fs");
+      
+      if (!(await exists(settingsFolder))) {
+        await mkdir(settingsFolder, { recursive: true });
+      }
+
+      const configPath = await join(settingsFolder, "freecode.json");
+      let config: any = {};
+      try {
+        if (await exists(configPath)) {
+          config = JSON.parse(await (import("@tauri-apps/plugin-fs").then(m => m.readTextFile(configPath))));
+        }
+      } catch {}
+
+      config.api_key = apiKey;
+      config.settings_folder = settingsFolder;
+
+      await writeTextFile(configPath, JSON.stringify(config, null, 2));
+      return true;
+    } catch (e) {
+      console.error("Tauri config save failed:", e);
+    }
+  }
+
+  // 2. Fallback to Next.js API
   try {
     const response = await fetch("/api/config", {
       method: "POST",

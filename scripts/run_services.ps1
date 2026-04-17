@@ -61,10 +61,10 @@ $backendProc = Start-Process -WindowStyle Hidden `
     -PassThru
 
 # ── 3. Start Frontend ──────────────────────────────────────────────────────────
-Write-Host "[4/5] Starting Frontend..."
+Write-Host "[4/5] Starting Frontend (Production Static Serve)..."
 $frontendProc = Start-Process -WindowStyle Hidden `
     -FilePath "cmd.exe" `
-    -ArgumentList "/c", "npm start -- -p $FrontendPort" `
+    -ArgumentList "/c", "npx serve@latest out -p $FrontendPort -s" `
     -WorkingDirectory $FrontendDir `
     -RedirectStandardOutput (Join-Path $LogsDir "frontend.log") `
     -RedirectStandardError  (Join-Path $LogsDir "frontend.err") `

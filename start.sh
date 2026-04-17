@@ -42,6 +42,27 @@ NEXT_PUBLIC_BACKEND_URL=ws://localhost:${FC_BACKEND_PORT}
 NEXT_PUBLIC_FRONTEND_PORT=${FC_FRONTEND_PORT}
 EOF
 
+# -- Tauri / Sidecar Check --
+USE_TAURI=1
+PREPARE_SIDECAR=0
+
+if ! command -v cargo &>/dev/null; then
+    echo "[info] Rust/Cargo not found. Falling back to pywebview mode."
+    USE_TAURI=0
+fi
+
+if [ "$USE_TAURI" -eq 1 ]; then
+    # Check if sidecar binary exists
+    if [ ! -f src-tauri/bin/server-* ]; then
+        PREPARE_SIDECAR=1
+    fi
+    
+    if [ "$PREPARE_SIDECAR" -eq 1 ]; then
+        echo "[setup] Preparing Tauri sidecar binary..."
+        "$PYTHON" scripts/prepare_sidecar.py
+    fi
+fi
+
 # Build frontend
 REBUILD=0
 [[ "$1" == "--rebuild" || "$1" == "-r" ]] && REBUILD=1
@@ -49,52 +70,48 @@ REBUILD=0
 # Auto-detect changes in src or public
 if [ -d frontend/.next ] && [ "$REBUILD" -eq 0 ]; then
     if [ "$(find frontend/src frontend/public -newer frontend/.next 2>/dev/null | wc -l)" -gt 0 ]; then
-        echo "[1/5] Changes detected in frontend source, rebuilding..."
+        echo "[1/5] Changes detected in frontend source..."
         REBUILD=1
     fi
 fi
 
-if [ -d frontend/.next ] && [ "$REBUILD" -eq 0 ]; then
-    echo "[1/5] Frontend build found. (Use --rebuild to force fresh build)"
-else
-    echo "[1/5] Building Frontend (production)..."
-    rm -rf frontend/.next
-    (cd frontend && npm run build) > logs/build.log 2>&1 || { echo "ERROR: Build failed. Check logs/build.log"; exit 1; }
+# Only build via npm if not using Tauri dev
+if [ "$USE_TAURI" -eq 0 ]; then
+    if [ ! -d frontend/.next ]; then REBUILD=1; fi
+    if [ "$REBUILD" -eq 1 ]; then
+        echo "[1/5] Building Frontend..."
+        (cd frontend && npm run build) > logs/build.log 2>&1 || { echo "ERROR: Build failed. Check logs/build.log"; exit 1; }
+    fi
 fi
 
-# Write .env.local so NEXT_PUBLIC vars are baked into the production build
-cat > frontend/.env.local <<EOF
-NEXT_PUBLIC_BACKEND_URL=ws://localhost:${FC_BACKEND_PORT}
-NEXT_PUBLIC_FRONTEND_PORT=${FC_FRONTEND_PORT}
-EOF
+# ── Start Services ────────────────────────────────────────────────────────────
+if [ "$USE_TAURI" -eq 1 ]; then
+    echo "[2/5] Launching via Tauri..."
+    npm run tauri dev
+else
+    echo "[2/5] Cleaning up previous sessions..."
+    fuser -k ${FC_BACKEND_PORT}/tcp 2>/dev/null || true
+    fuser -k ${FC_FRONTEND_PORT}/tcp 2>/dev/null || true
 
-# ── 2/5 Cleanup ────────────────────────────────────────────────────────────
-echo "[2/5] Cleaning up previous sessions..."
-fuser -k ${FC_BACKEND_PORT}/tcp 2>/dev/null || true
-fuser -k ${FC_FRONTEND_PORT}/tcp 2>/dev/null || true
+    echo "[3/5] Starting Backend..."
+    mkdir -p logs
+    export FC_BACKEND_PORT
+    "$PYTHON" -m backend.server > logs/backend.log 2>&1 &
+    BACKEND_PID=$!
 
-# ── 3/5 Starting Backend ───────────────────────────────────────────────────
-echo "[3/5] Starting Backend..."
-mkdir -p logs
-export FC_BACKEND_PORT
-"$PYTHON" -m backend.server > logs/backend.log 2>&1 &
-BACKEND_PID=$!
+    echo "[4/5] Starting Frontend..."
+    (cd frontend && npm start -- -p ${FC_FRONTEND_PORT}) > logs/frontend.log 2>&1 &
+    FRONTEND_PID=$!
 
-# ── 4/5 Starting Frontend ──────────────────────────────────────────────────
-echo "[4/5] Starting Frontend..."
-(cd frontend && npm start -- -p ${FC_FRONTEND_PORT}) > logs/frontend.log 2>&1 &
-FRONTEND_PID=$!
+    cleanup() {
+        echo ""; echo "Stopping FreeCode..."
+        kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
+        exit 0
+    }
+    trap cleanup SIGINT SIGTERM
 
-cleanup() {
-    echo ""; echo "Stopping FreeCode..."
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
-    exit 0
-}
-trap cleanup SIGINT SIGTERM
-
-# ── 5/5 Launch GUI ────────────────────────────────────────────────────────
-echo "[5/5] Launching GUI..."
-sleep 2
-"$PYTHON" scripts/run_webview.py
-
-cleanup
+    echo "[5/5] Launching GUI..."
+    sleep 2
+    "$PYTHON" scripts/run_webview.py
+    cleanup
+fi

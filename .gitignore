@@ -27,6 +27,9 @@ dashboard.lock
 # Session data — per-project, never commit
 .freecode/
 
+# Node
+node_modules/
+
 # Frontend (Next.js has its own .gitignore in frontend/)
 frontend/node_modules/
 frontend/.next/

@@ -2,59 +2,54 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 
-declare global {
-  interface Window {
-    pywebview?: { api: { minimize(): void; toggle_maximize(): void; close(): void; pick_folder(): Promise<string | null> } };
-  }
-}
-
 export default function TitleBar() {
-  const [mode, setMode] = useState<"pywebview" | "browser" | "unknown">("unknown");
+  const [mode, setMode] = useState<"tauri" | "browser" | "unknown">("unknown");
   const [maximized, setMaximized] = useState(false);
+  const [appWindow, setAppWindow] = useState<any>(null);
 
   useEffect(() => {
-    if (window.pywebview) {
-      setMode("pywebview");
-      return;
+    // Check if running in Tauri
+    const isTauri = !!(window as any).__TAURI_INTERNALS__;
+    
+    if (isTauri) {
+      import("@tauri-apps/api/window").then((mod) => {
+        const win = mod.getCurrentWindow();
+        setAppWindow(win);
+        setMode("tauri");
+        
+        // Listen for resize events to update maximized state
+        win.isMaximized().then(setMaximized);
+        const unlisten = win.onResized(() => {
+          win.isMaximized().then(setMaximized);
+        });
+        return () => { unlisten.then(fn => fn()); };
+      });
+    } else {
+      setMode("browser");
     }
-    const onReady = () => setMode("pywebview");
-    window.addEventListener("pywebviewready", onReady);
-
-    const timer = setTimeout(() => {
-      if (!window.pywebview) setMode("browser");
-    }, 500);
-
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("pywebviewready", onReady);
-    };
   }, []);
 
   if (mode === "unknown") return null;
 
-  const api = mode === "pywebview" ? window.pywebview!.api : null;
-
-  const handleMinimize = () => { try { api?.minimize(); } catch {} };
+  const handleMinimize = () => { appWindow?.minimize(); };
   const handleMaximize = () => {
-    try {
-      api?.toggle_maximize();
-      setMaximized(m => !m);
-    } catch {}
+    appWindow?.toggleMaximize();
+    // State will be updated via the resize listener
   };
-  const handleClose = () => { try { api?.close(); } catch {} };
+  const handleClose = () => { appWindow?.close(); };
 
   return (
-    <div className="titlebar">
+    <div className="titlebar" data-tauri-drag-region>
       {/* Drag region + app identity */}
       <div className="titlebar-drag" style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px", pointerEvents: "none" }}>
         <Image src="/logo.svg" width={12} height={12} alt="" style={{ opacity: 0.3 }} />
-        <span style={{ color: "#222", fontSize: 10, letterSpacing: "0.12em", textTransform: "lowercase", fontFamily: "inherit" }}>
+        <span style={{ color: "var(--dim3)", fontSize: 10, letterSpacing: "0.12em", textTransform: "lowercase", fontFamily: "inherit" }}>
           freecode
         </span>
       </div>
 
-      {/* Window controls — only shown in pywebview */}
-      {mode === "pywebview" && (
+      {/* Window controls — only shown in tauri */}
+      {mode === "tauri" && (
         <div className="titlebar-controls">
           {/* Minimize */}
           <button
@@ -74,13 +69,11 @@ export default function TitleBar() {
             onClick={handleMaximize}
           >
             {maximized ? (
-              /* Restore icon — two overlapping squares */
               <svg width="10" height="10" viewBox="0 0 10 10">
                 <rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1" />
                 <rect x="0" y="2" width="8" height="8" fill="var(--bg)" stroke="currentColor" strokeWidth="1" />
               </svg>
             ) : (
-              /* Maximize icon — single square */
               <svg width="9" height="9" viewBox="0 0 9 9">
                 <rect x=".5" y=".5" width="8" height="8" fill="none" stroke="currentColor" />
               </svg>

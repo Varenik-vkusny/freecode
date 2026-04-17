@@ -10,6 +10,10 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-fs": "^2.5.0",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@wterm/core": "^0.1.7",
     "@wterm/dom": "^0.1.7",
     "@wterm/markdown": "^0.1.7",

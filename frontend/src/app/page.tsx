@@ -9,6 +9,12 @@ import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfi
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "ws://localhost:8000";
 const DEFAULT_MODEL = process.env.NEXT_PUBLIC_MODEL || "gemma-4-26b-a4b-it";
 
+declare global {
+  interface Window {
+    pywebview?: { api: { pick_folder(): Promise<string | null> } };
+  }
+}
+
 const MODELS: { label: string; id: string }[] = [
   { label: "Gemma 4 31B",             id: "gemma-4-31b-it" },
   { label: "Gemma 4 26B",             id: "gemma-4-26b-a4b-it" },
@@ -348,15 +354,35 @@ function DirPicker({ onSelect, onBrowse, recents }: { onSelect: (dir: string) =>
   };
 
   const handleBrowse = async () => {
+    // 1. Check if running in Tauri
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    if (isTauri) {
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const picked = await open({
+          directory: true,
+          multiple: false,
+          title: "Select Project Folder"
+        });
+        if (picked) {
+          setVal(picked as string);
+          submit(picked as string);
+        }
+        return;
+      } catch (e) {
+        console.error("Tauri dialog failed:", e);
+      }
+    }
+
+    // 2. Check if running in pywebview
     if (window.pywebview?.api?.pick_folder) {
-      // Running inside pywebview — use native dialog
       const picked = await window.pywebview.api.pick_folder();
       if (picked) {
         setVal(picked);
         submit(picked);
       }
     } else {
-      // Fallback: let the parent handle it (WebSocket pick_dir)
+      // 3. Fallback: let the parent handle it (WebSocket pick_dir)
       onBrowse();
     }
   };
@@ -508,7 +534,24 @@ export default function Home() {
 
   const [onboardingFolderPickerCallback, setOnboardingFolderPickerCallback] = useState<((path: string) => void) | null>(null);
 
-  const handleBrowseSettingsFolder = useCallback((): Promise<string> => {
+  const handleBrowseSettingsFolder = useCallback(async (): Promise<string> => {
+    // 1. Check if running in Tauri
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    if (isTauri) {
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const picked = await open({
+          directory: true,
+          multiple: false,
+          title: "Select Settings Folder"
+        });
+        return (picked as string) || "";
+      } catch (e) {
+        console.error("Tauri dialog failed:", e);
+      }
+    }
+
+    // 2. Fallback to WebSocket
     return new Promise((resolve) => {
       setOnboardingFolderPickerCallback(() => (path: string) => {
         setOnboardingFolderPickerCallback(null);
@@ -516,6 +559,8 @@ export default function Home() {
       });
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: "pick_folder", session_id: sessionId }));
+      } else {
+        resolve("");
       }
     });
   }, [sessionId]);
@@ -991,7 +1036,14 @@ export default function Home() {
       {workingDir === null && !showOnboarding && (
         <DirPicker
           onSelect={handleDirSelect}
-          onBrowse={() => {
+          onBrowse={async () => {
+            const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+            if (isTauri) {
+              const { open } = await import("@tauri-apps/plugin-dialog");
+              const picked = await open({ directory: true, multiple: false });
+              if (picked) handleDirSelect(picked as string);
+              return;
+            }
             if (wsRef.current?.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({ type: "pick_dir", session_id: sessionId }));
             }
