@@ -8,7 +8,7 @@ import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfi
 import { FolderIcon, GearIcon, EditIcon, SearchIcon, PlusIcon, TrashIcon } from "./components/Icons";
 import { Popover } from "./components/Popover";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "ws://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "ws://127.0.0.1:47820";
 const DEFAULT_MODEL = process.env.NEXT_PUBLIC_MODEL || "gemma-4-26b-a4b-it";
 
 declare global {
@@ -1259,7 +1259,9 @@ export default function Home() {
               <div className="input-area input-area-offline">
                 <span className="status-dot offline">●</span>
                 <span className="input-offline-msg">
-                  Disconnected — run <code>start.bat</code> to reconnect
+                  {typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ 
+                    ? "Disconnected — Attempting to reconnect..." 
+                    : "Disconnected — run <code>start.bat</code> to reconnect"}
                 </span>
               </div>
             ) : (

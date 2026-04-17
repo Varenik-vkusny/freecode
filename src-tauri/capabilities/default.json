@@ -7,7 +7,12 @@
   ],
   "permissions": [
     "core:default",
-    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "bin/server", "sidecar": true }
+      ]
+    },
     "dialog:allow-open",
     "fs:default",
     "core:window:allow-close",
