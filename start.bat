@@ -90,19 +90,10 @@ if %USE_TAURI%==1 (
     if defined SDK_ROOT (
         if exist "!SDK_ROOT!Lib" set SDK_FOUND=1
     )
+
     if "!SDK_FOUND!"=="0" (
         echo [info] Windows SDK not found. Using pywebview mode.
         set USE_TAURI=0
-    )
-)
-
-:: Build frontend for pywebview
-if %USE_TAURI%==0 (
-    if not exist frontend\out (
-        echo [1/5] Building Frontend for Production...
-        cd frontend && call npm run build > ..\logs\build.log 2>&1 && cd ..
-    ) else (
-        echo [1/5] Production Frontend build found.
     )
 )
 
@@ -122,6 +113,12 @@ if %USE_TAURI%==1 (
 )
 
 if %USE_TAURI%==0 (
+    if not exist frontend\out (
+        echo [1/5] Building Frontend for Production...
+        cd frontend && call npm run build > ..\logs\build.log 2>&1 && cd ..
+    ) else (
+        echo [1/5] Production Frontend build found.
+    )
     echo [2/5] Handing off to PowerShell for process management...
     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run_services.ps1" -BackendPort %FC_BACKEND_PORT% -FrontendPort %FC_FRONTEND_PORT%
 )

@@ -8,8 +8,29 @@
   "permissions": [
     "core:default",
     "shell:allow-execute",
-    "shell:allow-app-sidecar",
     "dialog:allow-open",
-    "fs:default"
+    "fs:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-start-dragging",
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "$HOME/.freecode/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$HOME/.freecode/**" }]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "$HOME/.freecode/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [{ "path": "**" }]
+    }
   ]
 }

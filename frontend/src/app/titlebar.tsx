@@ -70,12 +70,11 @@ export default function TitleBar() {
           >
             {maximized ? (
               <svg width="10" height="10" viewBox="0 0 10 10">
-                <rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1" />
-                <rect x="0" y="2" width="8" height="8" fill="var(--bg)" stroke="currentColor" strokeWidth="1" />
+                <path d="M3,1 L9,1 L9,7 M1,3 L7,3 L7,9 L1,9 Z" fill="none" stroke="currentColor" strokeWidth="1" />
               </svg>
             ) : (
-              <svg width="9" height="9" viewBox="0 0 9 9">
-                <rect x=".5" y=".5" width="8" height="8" fill="none" stroke="currentColor" />
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1" />
               </svg>
             )}
           </button>

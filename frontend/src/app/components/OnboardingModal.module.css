@@ -1,182 +1,185 @@
 .modalOverlay {
   position: fixed;
-  inset: 32px 0 0;
-  background: rgba(0, 0, 0, 0.92);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(2px);
+  z-index: 10000;
+  backdrop-filter: blur(8px);
 }
 
 .modal {
   background: var(--bg-step);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
   max-width: 420px;
   width: 100%;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+  box-shadow: var(--shadow-lg);
   animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 .onboardingHeader {
-  margin-bottom: 22px;
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 20px;
 }
 
 .title {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0 0 5px 0;
-  color: var(--fg-default);
-  letter-spacing: 0.02em;
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 8px 0;
+  color: #fff;
+  letter-spacing: -0.01em;
 }
 
 .subtitle {
-  font-size: 11px;
-  color: var(--fg-muted);
+  font-size: 13px;
+  color: var(--dim);
   margin: 0;
 }
 
 .step {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 20px;
 }
 
 .inputGroup {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+}
+
+.labelRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .label {
   font-size: 10px;
-  font-weight: 700;
-  color: var(--fg-muted);
+  font-weight: 800;
+  color: var(--dim);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.description {
-  font-size: 11px;
-  color: var(--fg-muted);
-  margin: 0;
-  line-height: 1.5;
+  letter-spacing: 0.1em;
 }
 
 .link {
   color: var(--accent);
   text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .link:hover {
   text-decoration: underline;
 }
 
-.input {
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  padding: 10px 12px;
-  color: var(--fg-default);
-  font-size: 12px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s;
-  width: 100%;
+.inputWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: border-color 0.2s;
 }
 
-.input:focus {
-  border-color: var(--accent);
+.inputWrapper:focus-within {
+    border-color: var(--accent);
 }
 
-.folderRow {
-  display: flex;
-  gap: 6px;
-  align-items: stretch;
+.inputWithIcons {
+    background: transparent;
+    border: none;
+    padding: 10px 12px;
+    padding-right: 70px;
+    color: #fff;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    outline: none;
+    flex: 1;
 }
 
-.folderRow .input {
-  flex: 1;
+.inputIconsWrapper {
+    position: absolute;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    align-items: center;
 }
 
-.browseBtn {
-  background: var(--bg-step);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  color: var(--fg-muted);
-  font-family: inherit;
-  font-size: 11px;
-  padding: 0 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
+.iconBtn {
+    background: transparent;
+    border: none;
+    padding: 6px;
+    color: var(--dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s;
 }
 
-.browseBtn:hover {
-  border-color: var(--fg-muted);
-  color: var(--fg-default);
+.iconBtn:hover {
+    color: var(--accent);
+    background: var(--bg-hover);
 }
 
-.browseBtn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.input::placeholder {
-  color: #444;
-}
-
-.error {
-  color: var(--status-error);
-  font-size: 11px;
-  margin: 0;
-  background: rgba(248, 81, 73, 0.08);
-  padding: 8px 10px;
-  border-radius: 4px;
-  border-left: 2px solid var(--status-error);
+.iconBtn:disabled {
+    opacity: 0.3;
 }
 
 .onboardingFooter {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
 }
 
 .buttonPrimary {
-  padding: 9px 20px;
+  padding: 12px 24px;
   border: none;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
   font-weight: 700;
-  font-family: inherit;
+  font-family: var(--font-sans);
   cursor: pointer;
   background: var(--accent);
   color: #000;
-  transition: opacity 0.15s;
+  transition: filter 0.15s;
   width: 100%;
-  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .buttonPrimary:hover {
-  opacity: 0.9;
+  filter: brightness(1.1);
 }
 
 .footerNote {
   font-size: 10px;
-  color: var(--fg-muted);
+  color: var(--dim2);
   margin: 0;
   text-align: center;
 }
 
+.error {
+  color: var(--status-error);
+  font-size: 12px;
+  background: rgba(248, 81, 73, 0.1);
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 2px solid var(--status-error);
+}

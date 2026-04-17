@@ -42,6 +42,9 @@ frontend/next-env.d.ts
 Thumbs.db
 *.pem
 repomix-output.xml
-backend.log
-build.log
-frontend.log
+*.log
+logs/
+*.spec
+src-tauri/bin/
+status.txt
+git_status.txt

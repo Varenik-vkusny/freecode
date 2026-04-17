@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agent_core import Agent
-from .message_types import MessageType, ClientMessage, ServerMessage
+from backend.message_types import MessageType, ClientMessage, ServerMessage
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

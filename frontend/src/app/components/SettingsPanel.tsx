@@ -2,6 +2,8 @@
  
 import { useState, useEffect } from "react";
 import styles from "./SettingsPanel.module.css";
+import { EyeIcon, EyeOffIcon, CopyIcon, FolderIcon } from "./Icons";
+import { Popover } from "./Popover";
 import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfigToBackend } from "../lib/config";
  
 interface SettingsPanelProps {
@@ -65,12 +67,11 @@ export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: Set
   };
  
   if (!isOpen) return null;
- 
+
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.panel} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h2>Settings</h2>
+    <Popover onClose={onClose} className="popover-settings">
+        <div className="popover-header">
+          <span>Settings</span>
           <button className={styles.closeBtn} onClick={onClose}>✕</button>
         </div>
  
@@ -78,32 +79,40 @@ export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: Set
           <div className={styles.section}>
             <div className={styles.labelRow}>
                 <label className={styles.label}>API Key</label>
-                <div className={styles.keyActions}>
-                    <button onClick={() => setShowKey(!showKey)} className={styles.actionLink}>
-                        {showKey ? "Hide" : "Show"}
+            </div>
+            <div className={styles.inputWrapper}>
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className={styles.inputWithIcons}
+                  placeholder="Enter your API key..."
+                />
+                <div className={styles.inputIconsWrapper}>
+                    <button onClick={() => setShowKey(!showKey)} className={styles.iconBtn} title={showKey ? "Hide" : "Show"}>
+                        {showKey ? <EyeOffIcon /> : <EyeIcon />}
                     </button>
-                    <button onClick={handleCopyKey} className={styles.actionLink}>Copy</button>
+                    <button onClick={handleCopyKey} className={styles.iconBtn} title="Copy API Key">
+                        <CopyIcon />
+                    </button>
                 </div>
             </div>
-            <input
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className={styles.input}
-              placeholder="Enter your API key..."
-            />
           </div>
  
           <div className={styles.section}>
             <label className={styles.label}>Settings Folder</label>
-            <div className={styles.row}>
+            <div className={styles.inputWrapper}>
                 <input
                     type="text"
                     value={settingsFolder}
                     onChange={(e) => setSettingsFolder(e.target.value)}
-                    className={styles.input}
+                    className={styles.inputWithIcons}
                 />
-                <button onClick={handleBrowse} className={styles.browseBtn}>Browse</button>
+                <div className={styles.inputIconsWrapper}>
+                    <button onClick={handleBrowse} className={styles.iconBtn} title="Browse...">
+                        <FolderIcon />
+                    </button>
+                </div>
             </div>
           </div>
  
@@ -119,7 +128,6 @@ export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: Set
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Popover>
   );
 }

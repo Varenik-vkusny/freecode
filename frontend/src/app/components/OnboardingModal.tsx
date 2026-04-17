@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import styles from "./OnboardingModal.module.css";
+import { EyeIcon, EyeOffIcon, CopyIcon, FolderIcon } from "./Icons";
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -35,6 +36,11 @@ export default function OnboardingModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [browsing, setBrowsing] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+
+  const copyKey = () => {
+    navigator.clipboard.writeText(apiKey);
+  };
 
   const handleBrowse = async () => {
     if (!onBrowse) return;
@@ -75,25 +81,34 @@ export default function OnboardingModal({
 
         <div className={styles.step}>
           <div className={styles.inputGroup}>
-            <label className={styles.label}>Gemini API Key</label>
-            <p className={styles.description}>
-              FreeCode uses Gemini for reasoning. Get your free key from{" "}
-              <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className={styles.link}>
-                Google AI Studio
-              </a>
-            </p>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => {
-                setApiKey(e.target.value);
-                setError("");
-              }}
-              onKeyDown={(e) => e.key === "Enter" && handleComplete()}
-              placeholder="Paste your API key here..."
-              className={styles.input}
-              autoFocus
-            />
+            <div className={styles.labelRow}>
+                <label className={styles.label}>Gemini API Key</label>
+                <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className={styles.link}>
+                  Get Key →
+                </a>
+            </div>
+            <div className={styles.inputWrapper}>
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    setError("");
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && handleComplete()}
+                  placeholder="Paste your API key here..."
+                  className={styles.inputWithIcons}
+                  autoFocus
+                />
+                <div className={styles.inputIconsWrapper}>
+                    <button onClick={() => setShowKey(!showKey)} className={styles.iconBtn} type="button" title={showKey ? "Hide" : "Show"}>
+                        {showKey ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                    <button onClick={copyKey} className={styles.iconBtn} type="button" title="Copy">
+                        <CopyIcon />
+                    </button>
+                </div>
+            </div>
           </div>
 
           <div className={styles.inputGroup}>
@@ -101,24 +116,25 @@ export default function OnboardingModal({
             <p className={styles.description}>
               Where FreeCode stores your config and session history.
             </p>
-            <div className={styles.folderRow}>
+            <div className={styles.inputWrapper}>
               <input
                 type="text"
                 value={settingsFolder}
                 onChange={(e) => setSettingsFolder(e.target.value)}
                 placeholder="~/.freecode"
-                className={styles.input}
+                className={styles.inputWithIcons}
               />
-              {onBrowse && (
+              <div className={styles.inputIconsWrapper}>
                 <button
-                  onClick={handleBrowse}
-                  disabled={browsing}
-                  className={styles.browseBtn}
-                  type="button"
+                    onClick={handleBrowse}
+                    disabled={browsing}
+                    className={styles.iconBtn}
+                    type="button"
+                    title="Browse..."
                 >
-                  {browsing ? "…" : "Browse"}
+                    <FolderIcon />
                 </button>
-              )}
+              </div>
             </div>
           </div>
 

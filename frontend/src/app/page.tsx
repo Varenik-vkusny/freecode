@@ -5,6 +5,8 @@ import Image from "next/image";
 import OnboardingModal from "./components/OnboardingModal";
 import SettingsPanel from "./components/SettingsPanel";
 import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfigToBackend, getConfigFromBackend } from "./lib/config";
+import { FolderIcon, GearIcon, EditIcon, SearchIcon, PlusIcon, TrashIcon } from "./components/Icons";
+import { Popover } from "./components/Popover";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "ws://localhost:8000";
 const DEFAULT_MODEL = process.env.NEXT_PUBLIC_MODEL || "gemma-4-26b-a4b-it";
@@ -15,17 +17,17 @@ declare global {
   }
 }
 
-const MODELS: { label: string; id: string }[] = [
-  { label: "Gemma 4 31B",             id: "gemma-4-31b-it" },
-  { label: "Gemma 4 26B",             id: "gemma-4-26b-a4b-it" },
-  { label: "Gemma 3 27B",             id: "gemma-3-27b-it" },
-  { label: "Gemma 3 12B",             id: "gemma-3-12b-it" },
-  { label: "Gemma 3 4B",              id: "gemma-3-4b-it" },
-  { label: "Gemma 3 1B",              id: "gemma-3-1b-it" },
-  { label: "Gemma 3n E4B",            id: "gemma-3n-e4b-it" },
-  { label: "Gemma 3n E2B",            id: "gemma-3n-e2b-it" },
-  { label: "Gemini 3 Flash",          id: "gemini-3-flash-preview" },
-  { label: "Gemini 3.1 Flash Lite",   id: "gemini-3.1-flash-lite-preview" },
+const MODELS: { label: string; id: string; provider: string }[] = [
+  { label: "Gemma 4 31B",             id: "gemma-4-31b-it", provider: "Gemma" },
+  { label: "Gemma 4 26B",             id: "gemma-4-26b-a4b-it", provider: "Gemma" },
+  { label: "Gemma 3 27B",             id: "gemma-3-27b-it", provider: "Gemma" },
+  { label: "Gemma 3 12B",             id: "gemma-3-12b-it", provider: "Gemma" },
+  { label: "Gemma 3 4B",              id: "gemma-3-4b-it", provider: "Gemma" },
+  { label: "Gemma 3 1B",              id: "gemma-3-1b-it", provider: "Gemma" },
+  { label: "Gemma 3n E4B",            id: "gemma-3n-e4b-it", provider: "Gemma" },
+  { label: "Gemma 3n E2B",            id: "gemma-3n-e2b-it", provider: "Gemma" },
+  { label: "Gemini 3 Flash",          id: "gemini-3-flash-preview", provider: "Gemini" },
+  { label: "Gemini 3.1 Flash Lite",   id: "gemini-3.1-flash-lite-preview", provider: "Gemini" },
 ];
 
 const RECENT_DIRS_KEY = "freecode:recent_dirs";
@@ -90,22 +92,7 @@ function EffortIcon({ effort }: { effort: string }) {
   );
 }
 
-const FolderIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.7 }}>
-        <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3h-6.5L6.47 1.47a.75.75 0 0 0-.53-.22H1.75Z" />
-    </svg>
-);
-
-const SettingsIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.8 }}>
-        <path d="M11.5 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2Z" />
-        <path d="M1 3.75a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75ZM12.5 3a.75.75 0 0 1 0 1.5h1.75a.75.75 0 0 1 0-1.5h-1.75Z" />
-        <path d="M4.5 6a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2Z" />
-        <path d="M6.5 7.75a.75.75 0 0 1 0 1.5h7.75a.75.75 0 0 1 0-1.5H6.5ZM1.75 7a.75.75 0 0 0 0 1.5h.75a.75.75 0 0 0 0-1.5h-.75Z" />
-        <path d="M11.5 10a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2Z" />
-        <path d="M1 11.75a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75ZM12.5 11a.75.75 0 0 1 0 1.5h1.75a.75.75 0 0 1 0-1.5h-1.75Z" />
-    </svg>
-);
+// ── Commands ─────────────────────────────────────────────────────────────────
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -132,6 +119,7 @@ type MsgKind =
   | { kind: "tool_result"; name: string; args: Record<string, unknown>; result: string; error?: boolean }
   | { kind: "response"; chunks: string[] }
   | { kind: "system"; text: string }
+  | { kind: "help"; commands: Command[] }
   | { kind: "error"; text: string };
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -289,7 +277,7 @@ function WorkingIndicator() {
 
 // ── Welcome screen ───────────────────────────────────────────────────────────
 
-function Welcome({ show, onOpenDir }: { show: boolean; onOpenDir: () => void }) {
+function Welcome({ show, onRun }: { show: boolean; onRun: (cmd: string) => void }) {
   if (!show) return null;
   return (
     <div className="welcome-splash">
@@ -299,16 +287,16 @@ function Welcome({ show, onOpenDir }: { show: boolean; onOpenDir: () => void }) 
       <h1 className="splash-title">FREECODE</h1>
       <p className="splash-subtitle">Your personal agentic coding assistant.</p>
       
-      <div style={{ marginBottom: 32 }}>
-        <button className="dir-btn" onClick={onOpenDir}>
-          Select Project Folder
-        </button>
-      </div>
-
       <div className="splash-hints">
-        <div className="hint-row"><span className="hint-key">/model</span> Choose your intelligence</div>
-        <div className="hint-row"><span className="hint-key">/compact</span> Summarize and shrink context</div>
-        <div className="hint-row"><span className="hint-key">/help</span> Review all commands</div>
+        <div className="hint-row clickable" onClick={() => onRun("/model")}>
+          <span className="hint-key">/model</span> Choose your intelligence
+        </div>
+        <div className="hint-row clickable" onClick={() => onRun("/compact")}>
+          <span className="hint-key">/compact</span> Summarize and shrink context
+        </div>
+        <div className="hint-row clickable" onClick={() => onRun("/help")}>
+          <span className="hint-key">/help</span> Review all commands
+        </div>
       </div>
     </div>
   );
@@ -317,44 +305,58 @@ function Welcome({ show, onOpenDir }: { show: boolean; onOpenDir: () => void }) 
 // ── Model Picker ─────────────────────────────────────────────────────────────
 
 function ModelPicker({ current, onSelect, onClose }: { current: string; onSelect: (id: string) => void; onClose: () => void }) {
+  const providers = Array.from(new Set(MODELS.map(m => m.provider)));
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
   return (
-    <div className="dir-overlay" onClick={onClose}>
-      <div className="dir-box" onClick={e => e.stopPropagation()}>
-        <div className="dir-title">Select model</div>
-        {MODELS.map(m => (
-          <div
-            key={m.id}
-            className="dir-recent-row"
-            style={{ fontWeight: m.id === current ? "bold" : undefined, color: m.id === current ? "#fff" : undefined }}
-            onClick={() => { onSelect(m.id); onClose(); }}
-          >
-            <span className="dir-recent-arrow">▶</span>
-            <span>{m.label}</span>
-            <span style={{ marginLeft: "auto", color: "#555", fontSize: 11 }}>{m.id}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <Popover onClose={onClose} className="popover-model">
+        <div className="popover-header">Model</div>
+        <div className="popover-list">
+          {providers.map(p => (
+            <div key={p} className="popover-group">
+              <div className="popover-group-header" onClick={() => setCollapsed(prev => ({ ...prev, [p]: !prev[p] }))}>
+                <span className={`popover-arrow${collapsed[p] ? "" : " open"}`}>▶</span>
+                {p}
+              </div>
+              {!collapsed[p] && MODELS.filter(m => m.provider === p).map(m => (
+                <div
+                  key={m.id}
+                  className={`popover-row${m.id === current ? " active" : ""}`}
+                  onClick={() => { onSelect(m.id); onClose(); }}
+                >
+                  <div className="popover-info">
+                     <div className="popover-label">
+                       {m.label}
+                       {(m.id.includes("31b") || m.id.includes("3.1")) && <span className="tag-new">New</span>}
+                       {m.id.includes("high") && <span className="tag-warning">⚠️</span>}
+                     </div>
+                     <div className="popover-sub">{m.id}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+    </Popover>
   );
 }
 
 // ── Directory Picker ─────────────────────────────────────────────────────────
 
 
-function DirPicker({ onSelect, onBrowse, recents }: { onSelect: (dir: string) => void; onBrowse: () => void; recents: string[] }) {
+function DirPicker({ onSelect, onBrowse, onClose, recents }: { onSelect: (dir: string) => void; onBrowse: () => void; onClose?: () => void; recents: string[] }) {
   const [val, setVal] = useState("");
-  // Merge locally stored recents with server recents
   const localRecents = loadRecentDirs();
-  const allRecents = Array.from(new Set([...recents, ...localRecents])).slice(0, 10);
+  const allRecents = Array.from(new Set([...recents, ...localRecents])).slice(0, 5);
 
   const submit = (dir: string) => {
-    const d = dir.trim() || ".";
+    const d = dir.trim();
+    if (!d) return;
     saveRecentDir(d);
     onSelect(d);
   };
 
   const handleBrowse = async () => {
-    // 1. Check if running in Tauri
     const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
     if (isTauri) {
       try {
@@ -364,55 +366,65 @@ function DirPicker({ onSelect, onBrowse, recents }: { onSelect: (dir: string) =>
           multiple: false,
           title: "Select Project Folder"
         });
-        if (picked) {
-          setVal(picked as string);
-          submit(picked as string);
-        }
+        if (picked) submit(picked as string);
         return;
       } catch (e) {
         console.error("Tauri dialog failed:", e);
       }
     }
 
-    // 2. Check if running in pywebview
     if (window.pywebview?.api?.pick_folder) {
       const picked = await window.pywebview.api.pick_folder();
-      if (picked) {
-        setVal(picked);
-        submit(picked);
-      }
+      if (picked) submit(picked);
     } else {
-      // 3. Fallback: let the parent handle it (WebSocket pick_dir)
       onBrowse();
     }
   };
 
   return (
-    <div className="dir-overlay">
-      <div className="dir-box">
-        <div className="dir-title">Choose working directory</div>
-        <input
-          className="dir-input"
-          value={val}
-          onChange={e => setVal(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") submit(val); }}
-          placeholder="C:\path\to\project  (or . for current)"
-          autoFocus
-          data-last-active-input=""
-        />
-        <button className="dir-btn" onClick={() => submit(val)}>Open</button>
-        <button className="dir-btn dir-btn-secondary" style={{ marginLeft: 8 }} onClick={handleBrowse}>Browse...</button>
+    <Popover onClose={onClose} className="popover-dir">
+      <div className="popover-header">Project</div>
+      <div className="dir-popover-body">
+        <div className="dir-input-wrapper">
+          <input
+            className="dir-input"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submit(val); }}
+            placeholder="C:\path\to\project"
+            autoFocus
+          />
+          <button className="dir-browse-icon" onClick={handleBrowse} title="Browse...">
+            <FolderIcon />
+          </button>
+        </div>
         {allRecents.length > 0 && (
-          <>
-            <div className="dir-recents-label">Recent folders</div>
+          <div className="dir-recents-section">
+            <div className="dir-recents-label">Recent</div>
             {allRecents.map(d => (
               <div key={d} className="dir-recent-row" onClick={() => submit(d)}>
-                <span className="dir-recent-arrow">▶</span>
+                <FolderIcon />
                 <span className="dir-recent-text" title={d}>{d}</span>
               </div>
             ))}
-          </>
+          </div>
         )}
+      </div>
+    </Popover>
+  );
+}
+
+function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }: { isOpen: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void }) {
+  if (!isOpen) return null;
+  return (
+    <div className="dir-overlay" onClick={onCancel}>
+      <div className="dir-box" onClick={e => e.stopPropagation()} style={{ minWidth: 400 }}>
+        <div className="dir-title">{title}</div>
+        <p style={{ color: "var(--dim2)", fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>{message}</p>
+        <div className="dir-actions" style={{ justifyContent: "flex-end", gap: 12 }}>
+          <button className="dir-btn" style={{ background: "#da3633" }} onClick={onConfirm}>Delete</button>
+          <button className="dir-btn dir-btn-tertiary" onClick={onCancel}>Cancel</button>
+        </div>
       </div>
     </div>
   );
@@ -421,6 +433,10 @@ function DirPicker({ onSelect, onBrowse, recents }: { onSelect: (dir: string) =>
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
+  const [workingDir, setWorkingDir] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("freecode:working_dir") || null;
+  });
   const [messages, setMessages] = useState<MsgKind[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -443,24 +459,14 @@ export default function Home() {
   });
   const [effort, setEffort] = useState<typeof EFFORT_LEVELS[number]>("MEDIUM");
   const [paletteIdx, setPaletteIdx] = useState(0);
-  const [workingDir, setWorkingDir] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const id = localStorage.getItem(SESSION_ID_KEY);
-    if (id) {
-       try {
-         const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-         if (sessions[id]?.workingDir) return sessions[id].workingDir;
-       } catch {}
-    }
-    // Don't auto-fill from "freecode:working_dir" (global default) on startup, 
-    // force user to see the picker or select from recents if it's a new session.
-    return null;
-  });
   const [serverRecents, setServerRecents] = useState<string[]>([]);
   const [contextPct, setContextPct] = useState<number | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [dirPickerOpen, setDirPickerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sessionSearch, setSessionSearch] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const [savedSessions, setSavedSessions] = useState<Record<string, { id: string, name: string, updatedAt: number, messages: MsgKind[], workingDir?: string }>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -469,14 +475,17 @@ export default function Home() {
       return {};
     }
   });
-  const [compactThreshold] = useState(() => {
+  const [compactThreshold, setCompactThreshold] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_THRESHOLD;
     return Number(localStorage.getItem(COMPACT_THRESHOLD_KEY) ?? DEFAULT_THRESHOLD);
   });
+  const [isEditingThreshold, setIsEditingThreshold] = useState(false);
   const [autoCompact, setAutoCompact] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem(AUTO_COMPACT_KEY) !== "false";
   });
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(() => {
     if (typeof window === "undefined") return false;
     return !getApiKey();
@@ -525,10 +534,10 @@ export default function Home() {
   const messagesAreaRef = useRef<HTMLDivElement>(null);
   const scrollToBottom = useCallback((force = false) => {
     if (!messagesAreaRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = messagesAreaRef.current;
-    const isAtBottom = scrollHeight - scrollTop <= clientHeight + 100;
+    const el = messagesAreaRef.current;
+    const isAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 100;
     if (force || isAtBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      el.scrollTop = el.scrollHeight;
     }
   }, []);
 
@@ -564,6 +573,12 @@ export default function Home() {
       }
     });
   }, [sessionId]);
+
+  useEffect(() => {
+    const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", preventContextMenu);
+    return () => document.removeEventListener("contextmenu", preventContextMenu);
+  }, []);
 
   const handleOnboardingComplete = useCallback(async (apiKey: string, settingsFolder: string) => {
     saveApiKey(apiKey);
@@ -832,8 +847,7 @@ export default function Home() {
         setMessages(p => [...p, { kind: "system", text: "Available tools: filesystem (ls, read, write, edit, find), shell (run)" }]);
         break;
       case "/help":
-        const helpText = "AVAILABLE COMMANDS\n\n" + COMMANDS.map(c => `${c.name.padEnd(12)} ${c.description}`).join("\n");
-        setMessages(p => [...p, { kind: "system", text: helpText }]);
+        setMessages(p => [...p, { kind: "help", commands: COMMANDS }]);
         break;
       case "/effort": {
         const next = EFFORT_LEVELS[(EFFORT_LEVELS.indexOf(effort) + 1) % EFFORT_LEVELS.length];
@@ -964,6 +978,21 @@ export default function Home() {
       case "system":
         return <div key={i} className="msg-system">{msg.text}</div>;
 
+      case "help":
+        return (
+          <div key={i} className="msg msg-assistant">
+            <div className="help-block">
+              <div className="help-header">AVAILABLE COMMANDS</div>
+              {msg.commands.map(c => (
+                <div key={c.name} className="help-row">
+                  <span className="help-name" onClick={() => runCommand(c.name)}>{c.name}</span>
+                  <span className="help-desc">{c.description}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
       case "error":
         return <div key={i} className="msg-error">✗ {msg.text}</div>;
     }
@@ -986,7 +1015,7 @@ export default function Home() {
           <div className="sidebar-col closed" />
           <div className="chat-col">
             <div className="messages-area">
-              <Welcome show={true} onOpenDir={() => {}} />
+              <Welcome show={true} onRun={() => {}} />
             </div>
             <div className="input-outer">
               <div className="input-container">
@@ -1032,53 +1061,95 @@ export default function Home() {
         />
       )}
 
-      {/* Directory picker overlay — shown after onboarding, until a dir is chosen */}
-      {workingDir === null && !showOnboarding && (
+      {/* Directory picker — shown when no project or user opens it */}
+      {(!workingDir || dirPickerOpen) && !showOnboarding && (
         <DirPicker
-          onSelect={handleDirSelect}
+          onSelect={(dir) => { handleDirSelect(dir); setDirPickerOpen(false); }}
           onBrowse={async () => {
             const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
             if (isTauri) {
               const { open } = await import("@tauri-apps/plugin-dialog");
               const picked = await open({ directory: true, multiple: false });
-              if (picked) handleDirSelect(picked as string);
+              if (picked) { handleDirSelect(picked as string); setDirPickerOpen(false); }
               return;
             }
             if (wsRef.current?.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({ type: "pick_dir", session_id: sessionId }));
             }
           }}
+          onClose={() => setDirPickerOpen(false)}
           recents={serverRecents}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!confirmModal}
+        title={confirmModal?.title || ""}
+        message={confirmModal?.message || ""}
+        onConfirm={confirmModal?.onConfirm || (() => {})}
+        onCancel={() => setConfirmModal(null)}
+      />
 
       {/* Main Layout Area */}
       <div className="main-row">
         {/* Sidebar */}
         <div className={`sidebar-col ${sidebarOpen ? "" : "closed"}`}>
-          <div className="sidebar-header">
-              <span className="sidebar-title">SESSIONS</span>
-              <button className="sidebar-new-btn" title="New Chat" onClick={() => {
-                if (working) {
-                  if (confirm("Session is still working. Start new chat anyway?")) {
+          {/* Project Header */}
+          <div className="sidebar-project-select" onClick={() => setDirPickerOpen(true)} title={workingDir || "Switch Project"}>
+             <div className="project-select-inner">
+               <FolderIcon />
+               <div className="project-info">
+                 <span className="project-label">WORKSPACE</span>
+                 <span className="project-name">{workingDir ? workingDir.split(/[\\\/]/).filter(Boolean).pop() : "No Project"}</span>
+               </div>
+             </div>
+             <span className="project-arrow">↕</span>
+          </div>
+
+          <div className="sidebar-content">
+            <div className="sidebar-header">
+              {isSearching ? (
+                <div className="sidebar-search-inline">
+                  <input 
+                    autoFocus
+                    className="sidebar-search" 
+                    placeholder="Search..." 
+                    value={sessionSearch}
+                    onChange={e => setSessionSearch(e.target.value)}
+                    onBlur={() => { if (!sessionSearch) setIsSearching(false); }}
+                    onKeyDown={e => { if (e.key === "Escape") { setIsSearching(false); setSessionSearch(""); } }}
+                  />
+                </div>
+              ) : (
+                <span className="sidebar-title">CHATS</span>
+              )}
+              
+              <div className="sidebar-header-actions">
+                <button className="sidebar-header-btn" onClick={() => setIsSearching(!isSearching)} title="Search Chats">
+                  <SearchIcon />
+                </button>
+                <button className="sidebar-header-btn" title="New Chat" onClick={() => {
+                  if (working) {
+                    setConfirmModal({
+                        title: "New Chat",
+                        message: "Session is still working. Start new chat anyway?",
+                        onConfirm: () => {
+                          localStorage.removeItem(SESSION_ID_KEY);
+                          window.location.reload();
+                        }
+                    });
+                  } else {
                     localStorage.removeItem(SESSION_ID_KEY);
                     window.location.reload();
                   }
-                } else {
-                  localStorage.removeItem(SESSION_ID_KEY);
-                  window.location.reload();
-                }
-              }}>+</button>
+                }}>
+                  <PlusIcon />
+                </button>
+              </div>
             </div>
-            <input 
-              className="sidebar-search" 
-              placeholder="Search chats..." 
-              value={sessionSearch}
-              onChange={e => setSessionSearch(e.target.value)}
-            />
             <div className="sidebar-list">
               {Object.values(savedSessions)
-                .filter(ses => ses.name.toLowerCase().includes(sessionSearch.toLowerCase()))
+                .filter(ses => (workingDir === null || ses.workingDir === workingDir) && ses.name.toLowerCase().includes(sessionSearch.toLowerCase()))
                 .sort((a, b) => b.updatedAt - a.updatedAt)
                 .map(ses => (
                   <div 
@@ -1092,29 +1163,73 @@ export default function Home() {
                     }}
                   >
                     <div className="sidebar-item-row">
-                      <div className="sidebar-item-name">{ses.id === sessionId ? "Current Chat" : ses.name}</div>
-                      <button 
-                        className="sidebar-item-del" 
+                      <div className="sidebar-item-content">
+                        {editingSessionId === ses.id ? (
+                          <input
+                            autoFocus
+                            className="sidebar-rename-input"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onBlur={() => {
+                              if (editName.trim() && editName !== ses.name) {
+                                setSavedSessions(prev => {
+                                  const next = { ...prev };
+                                  next[ses.id] = { ...next[ses.id], name: editName.trim() };
+                                  localStorage.setItem("freecode:sessions", JSON.stringify(next));
+                                  return next;
+                                });
+                              }
+                              setEditingSessionId(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                              if (e.key === "Escape") setEditingSessionId(null);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <div className="sidebar-item-name">{ses.name || "Untitled session"}</div>
+                        )}
+                      </div>
+                      {editingSessionId !== ses.id && (
+                        <button
+                          className="sidebar-item-action sidebar-item-edit"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingSessionId(ses.id);
+                            setEditName(ses.name || "Untitled session");
+                          }}
+                        >
+                          <EditIcon />
+                        </button>
+                      )}
+                      <button
+                        className="sidebar-item-action sidebar-item-del" 
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm("Delete this session?")) {
-                            setSavedSessions(prev => {
-                              const next = { ...prev };
-                              delete next[ses.id];
-                              localStorage.setItem("freecode:sessions", JSON.stringify(next));
-                              return next;
-                            });
-                            if (ses.id === sessionId) {
-                              localStorage.removeItem(SESSION_ID_KEY);
-                              window.location.reload();
+                          setConfirmModal({
+                            title: "Delete Chat",
+                            message: `Are you sure you want to delete "${ses.name || "this session"}"? This action cannot be undone.`,
+                            onConfirm: () => {
+                              setSavedSessions(prev => {
+                                const next = { ...prev };
+                                delete next[ses.id];
+                                localStorage.setItem("freecode:sessions", JSON.stringify(next));
+                                return next;
+                              });
+                              if (ses.id === sessionId) {
+                                localStorage.removeItem(SESSION_ID_KEY);
+                                window.location.reload();
+                              }
+                              setConfirmModal(null);
                             }
-                          }
+                          });
                         }}
                       >
-                        ×
+                        <TrashIcon />
                       </button>
                     </div>
-                    <div className="sidebar-item-time">{new Date(ses.updatedAt).toLocaleTimeString()}</div>
+                    <div className="sidebar-item-time">{new Date(ses.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
               ))}
               {Object.keys(savedSessions).length === 0 && (
@@ -1122,11 +1237,12 @@ export default function Home() {
               )}
             </div>
           </div>
+        </div>
 
-        <div className="chat-col">
+        <div className="chat-col" onClick={() => { if (sidebarOpen) setSidebarOpen(false); }}>
           {/* Messages area */}
           <div className="messages-area" ref={messagesAreaRef}>
-            <Welcome show={messages.length === 0} onOpenDir={() => setWorkingDir(null)} />
+            <Welcome show={messages.length === 0} onRun={runCommand} />
             {messages.map(renderMessage)}
             {working && (
               <div className="msg msg-assistant">
@@ -1184,24 +1300,7 @@ export default function Home() {
             )}
           </div>
 
-          {/* Context bar */}
-          {contextPct != null && (
-            <div className={`ctx-bar${contextPct >= compactThreshold ? " ctx-bar-warn" : ""}`}>
-              <div className="ctx-bar-track">
-                <div className="ctx-bar-fill" style={{ width: `${contextPct}%` }} />
-              </div>
-              <span className="ctx-bar-label">
-                {contextPct.toFixed(0)}% ctx
-                {contextPct >= compactThreshold && (
-                  <span className="ctx-bar-action" onClick={() => runCommand("/compact")}> · compact</span>
-                )}
-              </span>
-              <label className="ctx-toggle" title="Toggle auto-compact">
-                <input type="checkbox" checked={autoCompact} onChange={e => setAutoCompact(e.target.checked)} />
-                <span>{autoCompact ? " auto" : " manual"}</span>
-              </label>
-            </div>
-          )}
+          {/* Removed standalone ctx-bar to prevent layout shift */}
         </div>
       </div>
 
@@ -1220,20 +1319,71 @@ export default function Home() {
              <span className="status-label">model</span>
              <span className="status-val">{model}</span>
           </div>
+          <span className="sep">·</span>
+          <div className="status-item clickable" title="Toggle auto-compact">
+            <span className="status-label">ctx</span>
+            <span className="status-val" style={{ color: (contextPct ?? 0) >= compactThreshold ? "var(--status-warning)" : "inherit" }}>
+                {contextPct != null ? `${contextPct.toFixed(0)}%` : "0%"}
+            </span>
+            <div className="ctx-auto-group" 
+                 onWheel={(e) => {
+                   e.preventDefault();
+                   const delta = e.deltaY < 0 ? 1 : -1;
+                   const next = Math.max(10, Math.min(95, compactThreshold + delta));
+                   setCompactThreshold(next);
+                   localStorage.setItem(COMPACT_THRESHOLD_KEY, next.toString());
+                 }}
+            >
+              <label className="ctx-toggle">
+                <input type="checkbox" checked={autoCompact} onChange={e => {
+                  setAutoCompact(e.target.checked);
+                  localStorage.setItem(AUTO_COMPACT_KEY, e.target.checked.toString());
+                }} />
+                <span>{autoCompact ? "auto" : "manual"}</span>
+              </label>
+              
+              {autoCompact && (isEditingThreshold ? (
+                <input 
+                  autoFocus
+                  className="ctx-threshold-input"
+                  type="number"
+                  min="10"
+                  max="95"
+                  value={compactThreshold}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value);
+                    if (!isNaN(n)) setCompactThreshold(n);
+                  }}
+                  onBlur={() => {
+                    const n = Math.max(10, Math.min(95, compactThreshold));
+                    setCompactThreshold(n);
+                    localStorage.setItem(COMPACT_THRESHOLD_KEY, n.toString());
+                    setIsEditingThreshold(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") setIsEditingThreshold(false);
+                  }}
+                />
+              ) : (
+                <span className="ctx-threshold-val" onClick={() => setIsEditingThreshold(true)}>
+                  ({compactThreshold}%)
+                </span>
+              ))}
+            </div>
+            {(contextPct ?? 0) >= compactThreshold && (
+               <span style={{ fontSize: 9, cursor: "pointer", color: "var(--accent-blue)", marginLeft: 4 }} onClick={() => runCommand("/compact")}>[compact]</span>
+            )}
+          </div>
         </div>
         <div className="status-right">
-          <div className="status-item clickable" onClick={() => setWorkingDir(null)}>
-            <FolderIcon />
-            <span className="status-val">{shortenPath(workingDir)}</span>
-          </div>
-          <span className="sep">·</span>
           <div className="status-item clickable" onClick={() => runCommand("/effort")}>
             <span className="status-label">effort</span>
             <EffortIcon effort={effort} />
           </div>
           <span className="sep">·</span>
           <div className="status-item clickable" onClick={() => setShowSettings(true)} title="Open settings">
-            <SettingsIcon />
+            <GearIcon />
           </div>
         </div>
       </div>
