@@ -133,7 +133,18 @@ _cfg = _load_config()
 API_KEY = _cfg.get("api_key")
 MODEL = _cfg.get("model", "gemma-4-26b-a4b-it")
 THINKING = _cfg.get("thinking", True)
-WORKING_DIR = _cfg.get("working_dir", ".")
+
+# When running as a bundled sidecar (PyInstaller), sys.frozen is set.
+# Use the install directory as the default working directory so users
+# don't need to pick a folder during onboarding.
+def _default_working_dir() -> str:
+    if getattr(sys, "frozen", False):
+        # Bundled exe: use the directory it was installed to
+        return str(Path(sys.executable).parent)
+    # Dev mode: use config or current directory
+    return _cfg.get("working_dir", ".")
+
+WORKING_DIR = _cfg.get("working_dir") or _default_working_dir()
 PORT = int(os.environ.get("FC_BACKEND_PORT") or _cfg.get("backend_port", 47820))
 HOST = os.environ.get("FC_BACKEND_HOST") or _cfg.get("backend_host", "localhost")
 
