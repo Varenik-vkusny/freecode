@@ -2,19 +2,17 @@
  
 import { useState, useEffect } from "react";
 import styles from "./SettingsPanel.module.css";
-import { EyeIcon, EyeOffIcon, CopyIcon, FolderIcon } from "./Icons";
+import { EyeIcon, EyeOffIcon, CopyIcon } from "./Icons";
 import { Popover } from "./Popover";
-import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfigToBackend } from "../lib/config";
+import { getApiKey, saveApiKey, sendConfigToBackend } from "../lib/config";
  
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  onBrowseSettings?: () => Promise<string>;
 }
  
-export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: SettingsPanelProps) {
+export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [apiKey, setApiKey] = useState("");
-  const [settingsFolder, setSettingsFolder] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -22,23 +20,15 @@ export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: Set
   useEffect(() => {
     if (isOpen) {
       setApiKey(getApiKey() || "");
-      setSettingsFolder(getSettingsFolder() || "");
       setError("");
       setSuccess("");
     }
   }, [isOpen]);
-
+ 
   const handleCopyKey = () => {
     navigator.clipboard.writeText(apiKey);
     setSuccess("API Key copied!");
     setTimeout(() => setSuccess(""), 2000);
-  };
-
-  const handleBrowse = async () => {
-    if (onBrowseSettings) {
-      const path = await onBrowseSettings();
-      if (path) setSettingsFolder(path);
-    }
   };
  
   const handleSave = async () => {
@@ -50,15 +40,9 @@ export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: Set
       return;
     }
  
-    if (!settingsFolder.trim()) {
-      setError("Settings folder is required");
-      return;
-    }
- 
-    const success = await sendConfigToBackend(apiKey, settingsFolder);
+    const success = await sendConfigToBackend(apiKey);
     if (success) {
       saveApiKey(apiKey);
-      saveSettingsFolder(settingsFolder);
       setSuccess("Settings saved!");
       setTimeout(onClose, 1000);
     } else {
@@ -99,23 +83,6 @@ export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: Set
             </div>
           </div>
  
-          <div className={styles.section}>
-            <label className={styles.label}>Settings Folder</label>
-            <div className={styles.inputWrapper}>
-                <input
-                    type="text"
-                    value={settingsFolder}
-                    onChange={(e) => setSettingsFolder(e.target.value)}
-                    className={styles.inputWithIcons}
-                />
-                <div className={styles.inputIconsWrapper}>
-                    <button onClick={handleBrowse} className={styles.iconBtn} title="Browse...">
-                        <FolderIcon />
-                    </button>
-                </div>
-            </div>
-          </div>
- 
           {error && <p className={styles.error}>{error}</p>}
           {success && <p className={styles.success}>{success}</p>}
  
@@ -131,3 +98,4 @@ export default function SettingsPanel({ isOpen, onClose, onBrowseSettings }: Set
     </Popover>
   );
 }
+

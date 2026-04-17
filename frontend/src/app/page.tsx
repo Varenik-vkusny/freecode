@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import OnboardingModal from "./components/OnboardingModal";
 import SettingsPanel from "./components/SettingsPanel";
-import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfigToBackend, getConfigFromBackend } from "./lib/config";
+import { getApiKey, saveApiKey, sendConfigToBackend, getConfigFromBackend } from "./lib/config";
+
 import { FolderIcon, GearIcon, EditIcon, SearchIcon, PlusIcon, TrashIcon } from "./components/Icons";
 import { Popover } from "./components/Popover";
 
@@ -515,8 +516,8 @@ export default function Home() {
     getConfigFromBackend().then(cfg => {
       if (cfg?.api_key) {
         saveApiKey(cfg.api_key);
-        if (cfg.settings_folder) saveSettingsFolder(cfg.settings_folder);
         setShowOnboarding(false);
+
 
         // Restore last project if no local state
         const localDir = localStorage.getItem("freecode:working_dir");
@@ -541,38 +542,7 @@ export default function Home() {
     }
   }, []);
 
-  const [onboardingFolderPickerCallback, setOnboardingFolderPickerCallback] = useState<((path: string) => void) | null>(null);
 
-  const handleBrowseSettingsFolder = useCallback(async (): Promise<string> => {
-    // 1. Check if running in Tauri
-    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-    if (isTauri) {
-      try {
-        const { open } = await import("@tauri-apps/plugin-dialog");
-        const picked = await open({
-          directory: true,
-          multiple: false,
-          title: "Select Settings Folder"
-        });
-        return (picked as string) || "";
-      } catch (e) {
-        console.error("Tauri dialog failed:", e);
-      }
-    }
-
-    // 2. Fallback to WebSocket
-    return new Promise((resolve) => {
-      setOnboardingFolderPickerCallback(() => (path: string) => {
-        setOnboardingFolderPickerCallback(null);
-        resolve(path);
-      });
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "pick_folder", session_id: sessionId }));
-      } else {
-        resolve("");
-      }
-    });
-  }, [sessionId]);
 
   useEffect(() => {
     const preventContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -580,11 +550,11 @@ export default function Home() {
     return () => document.removeEventListener("contextmenu", preventContextMenu);
   }, []);
 
-  const handleOnboardingComplete = useCallback(async (apiKey: string, settingsFolder: string) => {
+  const handleOnboardingComplete = useCallback(async (apiKey: string) => {
     saveApiKey(apiKey);
-    saveSettingsFolder(settingsFolder);
-    await sendConfigToBackend(apiKey, settingsFolder);
+    await sendConfigToBackend(apiKey);
     setShowOnboarding(false);
+
     // Reconnect WebSocket so backend picks up the new API key for fresh sessions
     if (wsRef.current) {
       wsRef.current.close();
@@ -599,10 +569,7 @@ export default function Home() {
       if (msg.recent_dirs) setServerRecents(msg.recent_dirs);
       return;
     }
-    if (msg.type === "folder_picked") {
-      setOnboardingFolderPickerCallback((cb: ((path: string) => void) | null) => { cb?.(msg.path || ""); return null; });
-      return;
-    }
+
     if (msg.type === "session") {
       setMessages(prev => {
         // Only restore if we don't have a real conversation going
@@ -768,7 +735,7 @@ export default function Home() {
 
   // Auto-compact when threshold exceeded
   useEffect(() => {
-    if (autoCompact && contextPct != null && contextPct >= compactThreshold) {
+    if (autoCompact && contextPct != null && contextPct >= compactThreshold && messages.length > 5) {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: "user_input", text: "Please summarize our conversation so far to compact the context.", effort, session_id: sessionId }));
       }
@@ -828,7 +795,12 @@ export default function Home() {
     switch (name) {
       case "/clear":
         setMessages([]);
+        setContextPct(0);
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "user_input", text: "/clear", effort, session_id: sessionId }));
+        }
         break;
+
       case "/model": {
         const parts = rawInput.split(" ");
         if (parts.length > 1) {
@@ -1037,17 +1009,15 @@ export default function Home() {
       <OnboardingModal
         isOpen={showOnboarding}
         onComplete={handleOnboardingComplete}
-        onBrowse={handleBrowseSettingsFolder}
         initialApiKey={getApiKey() || ""}
-        initialSettingsFolder={getSettingsFolder() || ""}
       />
 
       {/* Settings panel */}
       <SettingsPanel 
         isOpen={showSettings} 
         onClose={() => setShowSettings(false)} 
-        onBrowseSettings={handleBrowseSettingsFolder}
       />
+
 
       {/* Model picker overlay */}
       {modelPickerOpen && (

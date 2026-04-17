@@ -7,6 +7,9 @@ from pathlib import Path
 import logging
 from datetime import datetime
 import websockets
+import signal
+
+
 
 # Add parent to path so we can import agent_core
 import sys
@@ -23,22 +26,15 @@ import json as _json
 _ROOT = Path(__file__).parent.parent
 
 def _get_config_path() -> Path:
-    """Get freecode.json path from settings folder or repo root."""
-    home = Path.home()
-    default_settings = home / ".freecode"
-
-    # Check if freecode.json exists in default location
-    if (default_settings / "freecode.json").exists():
-        return default_settings / "freecode.json"
-
-    # Check repo root as fallback
-    if (_ROOT / "freecode.json").exists():
-        return _ROOT / "freecode.json"
-
-    # Default: save to settings folder
-    return default_settings / "freecode.json"
+    """Get freecode.json path from install directory or repo root."""
+    if getattr(sys, "frozen", False):
+        # Bundled exe: use the same directory
+        return Path(sys.executable).parent / "freecode.json"
+    # Dev mode: use repo root
+    return _ROOT / "freecode.json"
 
 _CONFIG_PATH = _get_config_path()
+
 
 # ── Session persistence ───────────────────────────────────────────────────────
 
@@ -228,6 +224,11 @@ class AgentSession:
             save_session_to_disk(self.session_id, wdir, name, msgs, model or MODEL)
         finally:
             self.active = False
+
+    async def shutdown(self):
+        """Cleanup session on exit."""
+        logger.info(f"Shutting down session {self.session_id}...")
+        # Add any necessary cleanup logic here if needed in the future
 
 
 # Global sessions — keyed by session_id (UUID from client)
@@ -423,11 +424,42 @@ async def main():
     logger.info(f"Starting server on ws://{HOST}:{PORT}")
     logger.info(f"Model: {MODEL}, Thinking: {THINKING}, WorkingDir: {WORKING_DIR}")
 
-    bind_host = "127.0.0.1" if HOST == "localhost" else HOST
+    # Setup parent process monitor to avoid dangling server
+    parent_pid = os.getppid()
+    
+    async def watch_parent():
+        """Monitor parent process and exit if it dies."""
+        logger.info(f"Monitoring parent process {parent_pid}...")
+        while True:
+            await asyncio.sleep(2)
+            try:
+                # On Windows/Unix, os.kill(pid, 0) checks if process exists
+                os.kill(parent_pid, 0)
+            except (OSError, ProcessLookupError, AttributeError):
+                logger.info("Parent process gone, shutting down backend...")
+                # Gracefully close all active sessions
+                for session in sessions.values():
+                    logger.info(f"Closing session {session.session_id}")
+                # Use os._exit to bypass any hanging loops or blocked tasks
+                os._exit(0)
+            except Exception:
+                pass
 
-    async with websockets.serve(handle_client, bind_host, PORT):
+    # Start the server and the monitor
+    bind_host = "127.0.0.1" if HOST == "localhost" else HOST
+    
+    server_task = websockets.serve(handle_client, bind_host, PORT)
+    monitor_task = asyncio.create_task(watch_parent())
+
+    async with server_task:
         logger.info(f"Server listening on {bind_host}:{PORT}")
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Future()  # Wait forever
+        except asyncio.CancelledError:
+            pass
+        finally:
+            monitor_task.cancel()
+
 
 
 if __name__ == "__main__":

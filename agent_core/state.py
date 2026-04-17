@@ -67,8 +67,11 @@ class SessionState:
 
     def should_compact(self) -> bool:
         """Check if context needs compaction (rough token estimate)."""
+        if len(self.messages) < 10:
+            return False
         used, limit = self.token_usage()
         return used > limit * 0.8
+
 
     def to_dict(self) -> dict:
         """Serialize state for API response."""

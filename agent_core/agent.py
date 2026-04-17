@@ -107,19 +107,48 @@ class Agent:
         # Add user message to history
         self.state.add_message("user", user_message)
 
-        # Check if compaction needed (or manually requested)
+        # Handle meta-commands
         is_manual_compact = user_message.startswith("/compact")
-        if is_manual_compact or should_compact(self.state):
-            async for event in self._compact():
-                yield event
-            if is_manual_compact:
-                # Return immediately since manual compact is a meta-action
-                api_tokens = self.state.token_count
+        is_clear = user_message.startswith("/clear")
+
+        if is_clear:
+            self.state.messages = []
+            self.state.token_count = 0
+            yield {"type": "system", "message": "Conversation history cleared."}
+            yield {"type": "done", "tokens_used": 0, "token_limit": self.state.token_limit, "context_pct": 0.0}
+            return
+
+        # We need at least 3 messages besides the current one to compact anything meaningfully
+        # (e.g., at least one full user/model exchange)
+        has_history = len(self.state.messages) > 3
+        
+        if is_manual_compact:
+            if not has_history:
+                msg = "Nothing to compact yet. Start a conversation first!"
+                if len(self.state.messages) > 1:
+                    msg = "Conversation is too short to compact. Send a few more messages!"
+                yield {"type": "system", "message": msg}
                 _, limit = self.state.token_usage()
-                tokens_used = api_tokens if api_tokens else self.state.token_usage()[0]
+                tokens_used = self.state.token_count or self.state.token_usage()[0]
                 context_pct = round(min(tokens_used / limit * 100, 100.0), 1) if limit else 0.0
                 yield {"type": "done", "tokens_used": tokens_used, "token_limit": limit, "context_pct": context_pct}
                 return
+            
+            async for event in self._compact():
+                yield event
+            # Return immediately since manual compact is a meta-action
+            api_tokens = self.state.token_count
+            _, limit = self.state.token_usage()
+            tokens_used = api_tokens if api_tokens else self.state.token_usage()[0]
+            context_pct = round(min(tokens_used / limit * 100, 100.0), 1) if limit else 0.0
+            yield {"type": "done", "tokens_used": tokens_used, "token_limit": limit, "context_pct": context_pct}
+            return
+
+        if should_compact(self.state) and has_history:
+            async for event in self._compact():
+                yield event
+
+
 
         # Build request
         messages = [

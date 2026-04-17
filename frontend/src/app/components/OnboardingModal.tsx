@@ -2,55 +2,26 @@
 
 import { useState } from "react";
 import styles from "./OnboardingModal.module.css";
-import { EyeIcon, EyeOffIcon, CopyIcon, FolderIcon } from "./Icons";
+import { EyeIcon, EyeOffIcon, CopyIcon } from "./Icons";
 
 interface OnboardingModalProps {
   isOpen: boolean;
-  onComplete: (apiKey: string, settingsFolder: string) => void;
-  onBrowse?: () => Promise<string>;
+  onComplete: (apiKey: string) => void;
   initialApiKey?: string;
-  initialSettingsFolder?: string;
-}
-
-function getDefaultSettingsFolder(): string {
-  if (typeof window === "undefined") return "~/.freecode";
-  // Try to detect OS from userAgent
-  const isWindows = navigator.userAgent.includes("Windows");
-  if (isWindows) {
-    return "%USERPROFILE%\\.freecode";
-  }
-  return "~/.freecode";
 }
 
 export default function OnboardingModal({
   isOpen,
   onComplete,
-  onBrowse,
   initialApiKey = "",
-  initialSettingsFolder = "",
 }: OnboardingModalProps) {
   const [apiKey, setApiKey] = useState(initialApiKey);
-  const [settingsFolder, setSettingsFolder] = useState(
-    initialSettingsFolder || getDefaultSettingsFolder()
-  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [browsing, setBrowsing] = useState(false);
   const [showKey, setShowKey] = useState(false);
 
   const copyKey = () => {
     navigator.clipboard.writeText(apiKey);
-  };
-
-  const handleBrowse = async () => {
-    if (!onBrowse) return;
-    setBrowsing(true);
-    try {
-      const path = await onBrowse();
-      if (path) setSettingsFolder(path);
-    } finally {
-      setBrowsing(false);
-    }
   };
 
   const handleComplete = async () => {
@@ -61,7 +32,7 @@ export default function OnboardingModal({
     setError("");
     setLoading(true);
     try {
-      await onComplete(apiKey, settingsFolder);
+      await onComplete(apiKey);
     } catch (e: any) {
       setError(e.message || "Failed to save configuration");
     } finally {
@@ -111,33 +82,6 @@ export default function OnboardingModal({
             </div>
           </div>
 
-          <div className={styles.inputGroup}>
-            <label className={styles.label}>Settings Folder</label>
-            <p className={styles.description}>
-              Where FreeCode stores your config and session history.
-            </p>
-            <div className={styles.inputWrapper}>
-              <input
-                type="text"
-                value={settingsFolder}
-                onChange={(e) => setSettingsFolder(e.target.value)}
-                placeholder="~/.freecode"
-                className={styles.inputWithIcons}
-              />
-              <div className={styles.inputIconsWrapper}>
-                <button
-                    onClick={handleBrowse}
-                    disabled={browsing}
-                    className={styles.iconBtn}
-                    type="button"
-                    title="Browse..."
-                >
-                    <FolderIcon />
-                </button>
-              </div>
-            </div>
-          </div>
-
           {error && <p className={styles.error}>{error}</p>}
 
           <div className={styles.onboardingFooter}>
@@ -149,7 +93,7 @@ export default function OnboardingModal({
               {loading ? "Checking..." : "Get Started →"}
             </button>
             <p className={styles.footerNote}>
-              Config will be saved to {settingsFolder}/freecode.json
+              Settings will be saved in the application directory.
             </p>
           </div>
         </div>
@@ -157,3 +101,4 @@ export default function OnboardingModal({
     </div>
   );
 }
+
