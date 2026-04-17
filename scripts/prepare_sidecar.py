@@ -24,11 +24,20 @@ def main():
     os.chdir(backend_dir)
     
     # Build with PyInstaller
+    # --collect-all ensures ALL submodules and data files are bundled,
+    # which is critical for websockets and google-genai which use lazy imports.
     subprocess.run([
         "pyinstaller",
         "--onefile",
         "--name", "server",
         "--clean",
+        "--collect-all", "websockets",
+        "--collect-all", "google.genai",
+        "--hidden-import", "websockets.legacy",
+        "--hidden-import", "websockets.legacy.server",
+        "--hidden-import", "websockets.legacy.client",
+        "--hidden-import", "google.auth",
+        "--hidden-import", "google.auth.transport.requests",
         "server.py"
     ], check=True)
     
