@@ -5,7 +5,7 @@ echo ""
 echo "====== FreeCode ======"
 echo ""
 
-# ── Ports (non-default to avoid conflicts) ─────────────────────────────────
+# ── Ports ──────────────────────────────────────────────────────────────────
 FC_BACKEND_PORT=47820
 FC_FRONTEND_PORT=47821
 
@@ -13,6 +13,7 @@ PYTHON=$(command -v python3 || command -v python)
 [ -z "$PYTHON" ] && echo "ERROR: Python 3 not found." && exit 1
 command -v node &>/dev/null || { echo "ERROR: Node.js not found."; exit 1; }
 
+# ── 1/5 Build / Requirements ───────────────────────────────────────────────
 if [ ! -d venv ]; then
     echo "[setup] Creating Python virtual environment..."
     $PYTHON -m venv venv
@@ -23,10 +24,8 @@ elif [ -f venv/Scripts/activate ]; then source venv/Scripts/activate
 else echo "ERROR: Could not activate venv." && exit 1
 fi
 
-# Use the virtual environment Python for the rest of this script.
 PYTHON=$(command -v python)
-
-if ! "$PYTHON" -c "import websockets, webview, qtpy, PyQt6.QtWebEngineCore" &>/dev/null; then
+if ! "$PYTHON" -c "import websockets, webview" &>/dev/null; then
     echo "[setup] Installing Python dependencies..."
     "$PYTHON" -m pip install -q -r requirements.txt || exit 1
 fi
@@ -37,9 +36,17 @@ if [ ! -d frontend/node_modules ]; then
     cd ..
 fi
 
-if [ ! -d frontend/.next ]; then
-    echo "[setup] Building frontend..."
-    (cd frontend && npm run build) || exit 1
+# Ensure .env.local exists for frontend baking
+cat > frontend/.env.local <<EOF
+NEXT_PUBLIC_BACKEND_URL=ws://localhost:${FC_BACKEND_PORT}
+NEXT_PUBLIC_FRONTEND_PORT=${FC_FRONTEND_PORT}
+EOF
+
+if [ -d frontend/.next ]; then
+    echo "[1/5] Frontend build found, skipping build step."
+else
+    echo "[1/5] Building Frontend (production)..."
+    (cd frontend && npm run build) > logs/build.log 2>&1 || { echo "ERROR: Build failed. Check logs/build.log"; exit 1; }
 fi
 
 # Write .env.local so NEXT_PUBLIC vars are baked into the production build
@@ -48,34 +55,33 @@ NEXT_PUBLIC_BACKEND_URL=ws://localhost:${FC_BACKEND_PORT}
 NEXT_PUBLIC_FRONTEND_PORT=${FC_FRONTEND_PORT}
 EOF
 
-# Cleanup any previous instances on our ports
+# ── 2/5 Cleanup ────────────────────────────────────────────────────────────
+echo "[2/5] Cleaning up previous sessions..."
 fuser -k ${FC_BACKEND_PORT}/tcp 2>/dev/null || true
 fuser -k ${FC_FRONTEND_PORT}/tcp 2>/dev/null || true
+
+# ── 3/5 Starting Backend ───────────────────────────────────────────────────
+echo "[3/5] Starting Backend..."
+mkdir -p logs
+export FC_BACKEND_PORT
+"$PYTHON" -m backend.server > logs/backend.log 2>&1 &
+BACKEND_PID=$!
+
+# ── 4/5 Starting Frontend ──────────────────────────────────────────────────
+echo "[4/5] Starting Frontend..."
+(cd frontend && npm start -- -p ${FC_FRONTEND_PORT}) > logs/frontend.log 2>&1 &
+FRONTEND_PID=$!
 
 cleanup() {
     echo ""; echo "Stopping FreeCode..."
     kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    exit 0
 }
 trap cleanup SIGINT SIGTERM
 
-# Create logs directory
-mkdir -p logs
-
-echo "Starting FreeCode..."
-
-export FC_BACKEND_PORT
-"$PYTHON" -m backend.server > logs/backend.log 2>&1 &
-BACKEND_PID=$!
+# ── 5/5 Launch GUI ────────────────────────────────────────────────────────
+echo "[5/5] Launching GUI..."
 sleep 2
-
-(cd frontend && npm start -- -p ${FC_FRONTEND_PORT}) > logs/frontend.log 2>&1 &
-FRONTEND_PID=$!
-
-sleep 5
-
-echo ""
-echo "Launching FreeCode window..."
 "$PYTHON" scripts/run_webview.py
 
 cleanup
-exit 0

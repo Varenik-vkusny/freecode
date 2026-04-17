@@ -32,6 +32,7 @@ export default function OnboardingModal({
   const [settingsFolder, setSettingsFolder] = useState(
     initialSettingsFolder || getDefaultSettingsFolder()
   );
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [browsing, setBrowsing] = useState(false);
 
@@ -46,13 +47,20 @@ export default function OnboardingModal({
     }
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (!apiKey.trim()) {
       setError("API Key is required");
       return;
     }
     setError("");
-    onComplete(apiKey, settingsFolder);
+    setLoading(true);
+    try {
+      await onComplete(apiKey, settingsFolder);
+    } catch (e: any) {
+      setError(e.message || "Failed to save configuration");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -117,8 +125,12 @@ export default function OnboardingModal({
           {error && <p className={styles.error}>{error}</p>}
 
           <div className={styles.onboardingFooter}>
-            <button onClick={handleComplete} className={styles.buttonPrimary}>
-              Get Started →
+            <button 
+              onClick={handleComplete} 
+              className={styles.buttonPrimary}
+              disabled={loading}
+            >
+              {loading ? "Checking..." : "Get Started →"}
             </button>
             <p className={styles.footerNote}>
               Config will be saved to {settingsFolder}/freecode.json

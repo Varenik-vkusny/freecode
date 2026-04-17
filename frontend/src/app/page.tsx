@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import OnboardingModal from "./components/OnboardingModal";
 import SettingsPanel from "./components/SettingsPanel";
-import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfigToBackend } from "./lib/config";
+import { getApiKey, saveApiKey, getSettingsFolder, saveSettingsFolder, sendConfigToBackend, getConfigFromBackend } from "./lib/config";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "ws://localhost:8000";
 const DEFAULT_MODEL = process.env.NEXT_PUBLIC_MODEL || "gemma-4-26b-a4b-it";
@@ -431,6 +431,7 @@ export default function Home() {
     return !getApiKey();
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -450,6 +451,21 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
+    // Initial config sync from backend to avoid repeated onboarding and restore project
+    getConfigFromBackend().then(cfg => {
+      if (cfg?.api_key) {
+        saveApiKey(cfg.api_key);
+        if (cfg.settings_folder) saveSettingsFolder(cfg.settings_folder);
+        setShowOnboarding(false);
+
+        // Restore last project if no local state
+        const localDir = localStorage.getItem("freecode:working_dir");
+        if (cfg.working_dir && !localDir) {
+          setWorkingDir(cfg.working_dir);
+          localStorage.setItem("freecode:working_dir", cfg.working_dir);
+        }
+      }
+    });
   }, []);
 
   // Track pending tool calls so we can attach results
@@ -497,6 +513,19 @@ export default function Home() {
       return;
     }
     if (msg.type === "session") {
+      setMessages(prev => {
+        // Only restore if we don't have a real conversation going
+        const hasConversation = prev.some(m => m.kind === "user" || m.kind === "response");
+        if (!hasConversation && msg.messages && msg.messages.length > 0) {
+          return msg.messages.map((m: any) => {
+            if (m.role === "user") return { kind: "user", text: m.content };
+            if (m.role === "assistant") return { kind: "response", chunks: [m.content] };
+            if (m.role === "system") return { kind: "system", text: m.content };
+            return { kind: "system", text: m.content }; // fallback
+          });
+        }
+        return prev;
+      });
       return;
     }
     if (msg.type === "sessions_list") {
@@ -664,6 +693,7 @@ export default function Home() {
 
       ws.onopen = () => {
         setConnected(true);
+        setConnectionError(null);
         retryDelay = 1000;
         // Re-announce session + working dir to backend after connect/reconnect
         const savedDir = localStorage.getItem("freecode:working_dir");
@@ -677,8 +707,10 @@ export default function Home() {
         }
       };
       ws.onclose = () => {
-        setConnected(false);
-        wsRef.current = null;
+        if (wsRef.current === ws) {
+          setConnected(false);
+          wsRef.current = null;
+        }
         if (!dead) retryTimeout = setTimeout(connect, retryDelay = Math.min(retryDelay * 2, 10000));
       };
       ws.onerror = () => { /* onclose fires after, handles retry */ };
@@ -723,7 +755,8 @@ export default function Home() {
         setMessages(p => [...p, { kind: "system", text: "Available tools: filesystem (ls, read, write, edit, find), shell (run)" }]);
         break;
       case "/help":
-        setMessages(p => [...p, { kind: "system", text: COMMANDS.map(c => `${c.name.padEnd(12)} ${c.description}`).join("\n") }]);
+        const helpText = "AVAILABLE COMMANDS\n\n" + COMMANDS.map(c => `${c.name.padEnd(12)} ${c.description}`).join("\n");
+        setMessages(p => [...p, { kind: "system", text: helpText }]);
         break;
       case "/effort": {
         const next = EFFORT_LEVELS[(EFFORT_LEVELS.indexOf(effort) + 1) % EFFORT_LEVELS.length];
@@ -754,7 +787,13 @@ export default function Home() {
       return;
     }
 
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (working) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      setConnectionError("Connection lost. Reconnecting...");
+      return;
+    }
+    setConnectionError(null);
+    
     setInput("");
     setWorking(true);
     setMessages(prev => {
@@ -1011,11 +1050,12 @@ export default function Home() {
 
           {/* Input Section */}
           <div className="input-outer">
+            {connectionError && <div className="connection-error-banner">✗ {connectionError}</div>}
             {!connected ? (
               <div className="input-area input-area-offline">
                 <span className="status-dot offline">●</span>
                 <span className="input-offline-msg">
-                  Disconnected — run <code>start-backend.bat</code> to reconnect
+                  Disconnected — run <code>start.bat</code> to reconnect
                 </span>
               </div>
             ) : (

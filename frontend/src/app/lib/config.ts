@@ -43,6 +43,17 @@ export function hasOnboarded(): boolean {
   return !!getApiKey() && !!getSettingsFolder();
 }
 
+export async function getConfigFromBackend(): Promise<{ api_key?: string; settings_folder?: string; working_dir?: string } | null> {
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to fetch config from backend:", error);
+    return null;
+  }
+}
+
 export async function sendConfigToBackend(
   apiKey: string,
   settingsFolder: string

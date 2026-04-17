@@ -43,28 +43,30 @@ echo NEXT_PUBLIC_FRONTEND_PORT=%FC_FRONTEND_PORT%>> frontend\.env.local
 :: Create logs directory
 if not exist logs mkdir logs
 
-:: Build frontend
-echo [1/4] Building Frontend (production)...
-cd frontend
-call npm run build > ..\logs\build.log 2>&1
-if errorlevel 1 (
-    echo [ERROR] Build failed. Check logs/build.log for details.
+:: Build frontend (only if needed)
+if exist frontend\.next (
+    echo [1/5] Frontend build found, skipping build step.
+) else (
+    echo [1/5] Building Frontend...
+    cd frontend
+    call npm run build > ..\logs\build.log 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Build failed. Check logs/build.log for details.
+        cd ..
+        pause
+        exit /b 1
+    )
     cd ..
-    pause
-    exit /b 1
 )
-cd ..
 
 :: Hand off to PowerShell for process management (avoids cmd pipe-escaping issues)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run_services.ps1" ^
     -BackendPort %FC_BACKEND_PORT% ^
     -FrontendPort %FC_FRONTEND_PORT%
 
-echo.
-echo Done! FreeCode is running.
+echo Done! FreeCode is running in the background.
 echo   UI:      http://localhost:%FC_FRONTEND_PORT%
 echo   Backend: ws://localhost:%FC_BACKEND_PORT%
-echo   Logs:    logs/backend.log, logs/frontend.log, logs/build.log
+echo   Logs:    logs/backend.log, logs/frontend.log
 echo.
-timeout /t 3 /nobreak >nul
 exit

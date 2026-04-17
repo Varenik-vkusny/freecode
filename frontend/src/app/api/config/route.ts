@@ -7,6 +7,36 @@ interface ConfigRequest {
   settings_folder: string;
 }
 
+export async function GET() {
+  try {
+    const home = process.env.USERPROFILE || process.env.HOME || "";
+    const settingsFolder = path.join(home, ".freecode");
+    const configPath = path.join(settingsFolder, "freecode.json");
+
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(content);
+      return NextResponse.json(config);
+    } catch {
+      // If ~/.freecode/freecode.json doesn't exist, try local project root
+      try {
+        const rootConfigPath = path.join(process.cwd(), "freecode.json");
+        const content = await fs.readFile(rootConfigPath, "utf-8");
+        const config = JSON.parse(content);
+        return NextResponse.json(config);
+      } catch {
+        return NextResponse.json({ error: "No config found" }, { status: 404 });
+      }
+    }
+  } catch (error) {
+    console.error("Config GET error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as ConfigRequest;

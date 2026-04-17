@@ -139,36 +139,58 @@ HOST = os.environ.get("FC_BACKEND_HOST") or _cfg.get("backend_host", "localhost"
 
 
 async def pick_directory_async():
-    """Open a modern Windows folder picker and return the path."""
-    ps_cmd = """
-    Add-Type -AssemblyName System.Windows.Forms
-    $owner = New-Object System.Windows.Forms.Form
-    $owner.TopMost = $true
-    $owner.WindowState = 'Minimized'
-    $owner.ShowInTaskbar = $false
-    $owner.Show()
-    $owner.Hide()
-    $f = New-Object System.Windows.Forms.FolderBrowserDialog
-    $f.Description = "Select folder for FreeCode"
-    $f.ShowNewFolderButton = $true
-    if($f.ShowDialog($owner) -eq "OK"){
-        $f.SelectedPath
-    }
-    $owner.Dispose()
-    """
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "powershell", "-Command", ps_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        path = stdout.decode().strip()
-        if path.endswith("Select Folder"):
-            path = path.replace("Select Folder", "").strip("\\").strip("/")
-        return path
-    except Exception as e:
-        logger.error(f"Failed to open folder picker: {e}")
+    """Open a native folder picker dialog and return the path. Supports Windows (PS) and Linux (Zenity/KDialog)."""
+    if os.name == "nt":
+        # Windows PowerShell implementation
+        ps_cmd = """
+        Add-Type -AssemblyName System.Windows.Forms
+        $owner = New-Object System.Windows.Forms.Form
+        $owner.TopMost = $true
+        $owner.WindowState = 'Minimized'
+        $owner.ShowInTaskbar = $false
+        $owner.Show(); $owner.Hide()
+        $f = New-Object System.Windows.Forms.FolderBrowserDialog
+        $f.Description = "Select folder for FreeCode"
+        $f.ShowNewFolderButton = $true
+        if($f.ShowDialog($owner) -eq "OK"){ $f.SelectedPath }
+        $owner.Dispose()
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "powershell", "-Command", ps_cmd,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await proc.communicate()
+            return stdout.decode().strip()
+        except Exception as e:
+            logger.error(f"Windows folder picker failed: {e}")
+            return ""
+    else:
+        # Linux / Posix implementation
+        # 1. Try zenity (GNOME)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "zenity", "--file-selection", "--directory", "--title=Select folder for FreeCode",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode == 0:
+                return stdout.decode().strip()
+        except FileNotFoundError:
+            pass
+
+        # 2. Try kdialog (KDE)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "kdialog", "--getexistingdirectory", ".", "--title", "Select folder for FreeCode",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode == 0:
+                return stdout.decode().strip()
+        except FileNotFoundError:
+            pass
+
         return ""
 
 
@@ -254,6 +276,12 @@ async def handle_client(websocket):
         except Exception:
             pass
 
+        # Always provide the current root and frontend directories as convenient defaults
+        cwd = os.getcwd()
+        for default_dir in [cwd, os.path.join(cwd, "frontend")]:
+            if default_dir not in recents:
+                recents.append(default_dir)
+
         await websocket.send(json.dumps({
             "type": "hello", 
             "server": "freecode-backend",
@@ -283,6 +311,7 @@ async def handle_client(websocket):
                     await websocket.send(json.dumps({
                         "type": "session",
                         "session_id": session_id,
+                        "messages": [{"role": m.role, "content": m.content} for m in session.agent.state.messages]
                     }))
                     await send_system(websocket, f"Working directory: {session.agent.state.working_dir}")
 

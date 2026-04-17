@@ -21,7 +21,7 @@ $env:FC_BACKEND_PORT  = $BackendPort
 $env:FC_FRONTEND_PORT = $FrontendPort
 
 # ── 0. Kill previous tracked processes ────────────────────────────────────────
-Write-Host "[0/4] Cleaning up previous sessions..."
+Write-Host "[2/5] Cleaning up previous sessions..."
 if (Test-Path $PidFile) {
     Get-Content $PidFile | ForEach-Object {
         $id = [int]$_ 
@@ -51,7 +51,7 @@ Start-Sleep -Milliseconds 1500
 }
 
 # ── 2. Start Backend ───────────────────────────────────────────────────────────
-Write-Host "[2/4] Starting Backend..."
+Write-Host "[3/5] Starting Backend..."
 $backendProc = Start-Process -WindowStyle Hidden `
     -FilePath $PythonExe `
     -ArgumentList "-m", "backend.server" `
@@ -61,7 +61,7 @@ $backendProc = Start-Process -WindowStyle Hidden `
     -PassThru
 
 # ── 3. Start Frontend ──────────────────────────────────────────────────────────
-Write-Host "[3/4] Starting Frontend..."
+Write-Host "[4/5] Starting Frontend..."
 $frontendProc = Start-Process -WindowStyle Hidden `
     -FilePath "cmd.exe" `
     -ArgumentList "/c", "npm start -- -p $FrontendPort" `
@@ -74,13 +74,12 @@ $frontendProc = Start-Process -WindowStyle Hidden `
 $backendProc.Id, $frontendProc.Id | Set-Content $PidFile
 
 # ── 4. Wait & Launch WebView ───────────────────────────────────────────────────
-Write-Host "[4/4] Waiting for servers to warm up..."
-Start-Sleep -Seconds 5
-
-Write-Host ""
-Write-Host "Launching GUI..."
+Write-Host "[5/5] Launching GUI..."
 $webviewScript = Join-Path $RootDir "scripts\run_webview.py"
 Start-Process -WindowStyle Hidden `
     -FilePath $PythonExe `
     -ArgumentList $webviewScript `
     -WorkingDirectory $RootDir
+
+Start-Sleep -Seconds 1
+Write-Host "Ready."
