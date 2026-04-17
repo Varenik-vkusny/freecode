@@ -24,9 +24,6 @@ def main():
     os.chdir(backend_dir)
     
     # Build with PyInstaller
-    # --onefile: bundle everything into one exe
-    # --name server: core name
-    # --noconsole: hide the black terminal window (optional, Tauri can also 'hide' it)
     subprocess.run([
         "pyinstaller",
         "--onefile",
@@ -44,11 +41,10 @@ def main():
         dist_file = backend_dir / "dist" / "server"
         
     # Get target triple for Tauri
-    # Example: x86_64-pc-windows-msvc
-    # We can use 'npx tauri info' to find out or just guess for this OS
     import platform
     machine = platform.machine().lower()
     if machine == "amd64": machine = "x86_64"
+    if machine == "arm64": machine = "aarch64"
     
     system = platform.system().lower()
     if system == "windows":
