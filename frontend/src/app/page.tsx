@@ -129,8 +129,9 @@ function ThinkingBlock({ chunks, done }: { chunks: string[]; done: boolean }) {
     <div className="thinking-block">
       <div className="thinking-header" onClick={() => setOpen(o => !o)}>
         <span className={`thinking-expand${open ? " open" : ""}`}>▶</span>
-        <span>∴ {done ? "Thought" : "Thinking…"}</span>
-        {!open && text && <span style={{ color: "#333", fontSize: 11 }}>({Math.round(text.length / 4)} tokens)</span>}
+        <span style={{ color: "var(--dim2)", fontSize: 10 }}>{done ? "●" : "○"}</span>
+        <span>{done ? "Thought" : "Thinking"}</span>
+        {!open && text && <span style={{ color: "var(--dim3)", fontSize: 10, marginLeft: "auto" }}>{Math.round(text.length / 4)} tokens</span>}
       </div>
       {open && <div className="thinking-content">{text}</div>}
     </div>
@@ -152,29 +153,30 @@ function ToolBlock({
   const argsStr = Object.entries(args)
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
     .join(", ");
+  
   return (
     <div className="tool-block">
-      <div className="tool-header" onClick={() => setOpen(o => !o)}>
-        <span className="tool-icon">⏵</span>
+      <div className={`tool-header${open ? " open" : ""}`} onClick={() => setOpen(o => !o)}>
+        <span className="tool-icon" style={{ color: "var(--accent-blue)", fontSize: 10 }}>{open ? "▼" : "▶"}</span>
         <span className="tool-name">{name}</span>
-        {!open && <span className="tool-args-inline">({argsStr})</span>}
+        {!open && <span className="tool-args-inline">{argsStr}</span>}
         {result !== undefined && (
-          <span style={{ marginLeft: "auto", color: resultError ? "#884444" : "#448844", fontSize: 11 }}>
-            {resultError ? "✗" : "✓"}
+          <span style={{ marginLeft: "auto", color: resultError ? "#f85149" : "var(--accent-green)", fontSize: 12 }}>
+            {resultError ? "✕" : "✓"}
           </span>
         )}
       </div>
       {open && (
-        <>
-          <div style={{ padding: "4px 8px 6px", color: "#555", fontSize: 11, borderTop: "1px solid #1c1c1c" }}>
-            {argsStr || "(no args)"}
+        <div className="tool-body">
+          <div style={{ padding: "8px 12px", color: "var(--dim2)", fontSize: 11, background: "rgba(255,255,255,0.01)", borderBottom: "1px solid var(--border)" }}>
+             {argsStr || "(no args)"}
           </div>
           {result !== undefined && (
             <div className={`tool-result-block ${resultError ? "tool-result-err" : "tool-result-ok"}`}>
               {result}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -273,7 +275,7 @@ function WorkingIndicator() {
 
 // ── Welcome screen ───────────────────────────────────────────────────────────
 
-function Welcome({ show }: { show: boolean }) {
+function Welcome({ show, onOpenDir }: { show: boolean; onOpenDir: () => void }) {
   if (!show) return null;
   return (
     <div className="welcome-splash">
@@ -283,6 +285,12 @@ function Welcome({ show }: { show: boolean }) {
       <h1 className="splash-title">FREECODE</h1>
       <p className="splash-subtitle">Your personal agentic coding assistant.</p>
       
+      <div style={{ marginBottom: 32 }}>
+        <button className="dir-btn" onClick={onOpenDir}>
+          Select Project Folder
+        </button>
+      </div>
+
       <div className="splash-hints">
         <div className="hint-row"><span className="hint-key">/model</span> Choose your intelligence</div>
         <div className="hint-row"><span className="hint-key">/compact</span> Summarize and shrink context</div>
@@ -403,7 +411,16 @@ export default function Home() {
   const [paletteIdx, setPaletteIdx] = useState(0);
   const [workingDir, setWorkingDir] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
-    return localStorage.getItem("freecode:working_dir");
+    const id = localStorage.getItem(SESSION_ID_KEY);
+    if (id) {
+       try {
+         const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
+         if (sessions[id]?.workingDir) return sessions[id].workingDir;
+       } catch {}
+    }
+    // Don't auto-fill from "freecode:working_dir" (global default) on startup, 
+    // force user to see the picker or select from recents if it's a new session.
+    return null;
   });
   const [serverRecents, setServerRecents] = useState<string[]>([]);
   const [contextPct, setContextPct] = useState<number | null>(null);
@@ -909,7 +926,7 @@ export default function Home() {
           <div className="sidebar-col closed" />
           <div className="chat-col">
             <div className="messages-area">
-              <Welcome show={true} />
+              <Welcome show={true} onOpenDir={() => {}} />
             </div>
             <div className="input-outer">
               <div className="input-container">
@@ -1038,7 +1055,7 @@ export default function Home() {
         <div className="chat-col">
           {/* Messages area */}
           <div className="messages-area">
-            <Welcome show={messages.length === 0} />
+            <Welcome show={messages.length === 0} onOpenDir={() => setWorkingDir(null)} />
             {messages.map(renderMessage)}
             {working && (
               <div className="msg msg-assistant">
@@ -1123,23 +1140,28 @@ export default function Home() {
           <span className="status-val clickable sidetoggle" onClick={() => setSidebarOpen(s => !s)} title="Toggle sessions sidebar">
             ☰
           </span>
-          <span className={`status-dot ${connected ? "online" : "offline"}`}>●</span>
-          <span className="status-label">freecode v2.0</span>
+          <div className="status-item">
+            <span className={`status-dot ${connected ? "online" : "offline"}`}>●</span>
+            <span className="status-label">v2.0</span>
+          </div>
           <span className="sep">·</span>
-          <span className="status-label">model </span>
-          <span className="status-val clickable" onClick={() => setModelPickerOpen(true)}>{model}</span>
+          <div className="status-item clickable" onClick={() => setModelPickerOpen(true)}>
+             <span className="status-label">model</span>
+             <span className="status-val">{model}</span>
+          </div>
         </div>
         <div className="status-right">
-          <span className="status-val clickable" onClick={() => setShowSettings(true)} title="Open settings">⚙</span>
+          <div className="status-item clickable" onClick={() => setWorkingDir(null)}>
+            <span style={{ fontSize: 14 }}>📁</span>
+            <span className="status-val">{shortenPath(workingDir)}</span>
+          </div>
           <span className="sep">·</span>
-          <span className="status-val clickable" onClick={() => setWorkingDir(null)}>
-            {shortenPath(workingDir)}
-          </span>
-          <span className="sep">·</span>
-          <span className="status-val clickable effort-cell" onClick={() => runCommand("/effort")}>
-            <span className="status-label" style={{ color: "#666", opacity: 0.7 }}>effort </span>
+          <div className="status-item clickable" onClick={() => runCommand("/effort")}>
+            <span className="status-label">effort</span>
             <EffortIcon effort={effort} />
-          </span>
+          </div>
+          <span className="sep">·</span>
+          <span className="status-val clickable" onClick={() => setShowSettings(true)} title="Open settings" style={{ fontSize: 14 }}>⚙</span>
         </div>
       </div>
     </div>

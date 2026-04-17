@@ -43,11 +43,26 @@ echo NEXT_PUBLIC_FRONTEND_PORT=%FC_FRONTEND_PORT%>> frontend\.env.local
 :: Create logs directory
 if not exist logs mkdir logs
 
-:: Build frontend (only if needed)
-if exist frontend\.next (
-    echo [1/5] Frontend build found, skipping build step.
+:: Build frontend
+set REBUILD=0
+if "%1"=="--rebuild" set REBUILD=1
+if "%1"=="-r" set REBUILD=1
+
+:: Auto-detect changes if not forced
+if exist frontend\.next if "%REBUILD%"=="0" (
+    xcopy frontend\src\* frontend\.next /D /L /Y /S | findstr /C:"File(s)" | findstr /V "0 File(s)" > nul
+    if not errorlevel 1 (
+        echo [1/5] Changes detected in frontend source, rebuilding...
+        set REBUILD=1
+    )
+)
+
+if exist frontend\.next if "%REBUILD%"=="0" (
+    echo [1/5] Frontend build found. (Use 'start.bat --rebuild' to force)
+    echo.
 ) else (
     echo [1/5] Building Frontend...
+    if exist frontend\.next rd /s /q frontend\.next
     cd frontend
     call npm run build > ..\logs\build.log 2>&1
     if errorlevel 1 (

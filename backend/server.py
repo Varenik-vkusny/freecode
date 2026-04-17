@@ -140,24 +140,16 @@ HOST = os.environ.get("FC_BACKEND_HOST") or _cfg.get("backend_host", "localhost"
 
 async def pick_directory_async():
     """Open a native folder picker dialog and return the path. Supports Windows (PS) and Linux (Zenity/KDialog)."""
-    if os.name == "nt":
-        # Windows PowerShell implementation
+    if (os.name == "nt"):
+        # Windows PowerShell implementation using Shell.Application (more reliable than WinForms in subprocess)
         ps_cmd = """
-        Add-Type -AssemblyName System.Windows.Forms
-        $owner = New-Object System.Windows.Forms.Form
-        $owner.TopMost = $true
-        $owner.WindowState = 'Minimized'
-        $owner.ShowInTaskbar = $false
-        $owner.Show(); $owner.Hide()
-        $f = New-Object System.Windows.Forms.FolderBrowserDialog
-        $f.Description = "Select folder for FreeCode"
-        $f.ShowNewFolderButton = $true
-        if($f.ShowDialog($owner) -eq "OK"){ $f.SelectedPath }
-        $owner.Dispose()
+        $App = New-Object -ComObject Shell.Application
+        $Folder = $App.BrowseForFolder(0, 'Select folder for FreeCode', 16 + 64, 0)
+        if ($Folder) { $Folder.Self.Path }
         """
         try:
             proc = await asyncio.create_subprocess_exec(
-                "powershell", "-Command", ps_cmd,
+                "powershell", "-NoProfile", "-Command", ps_cmd,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             stdout, _ = await proc.communicate()
@@ -307,13 +299,12 @@ async def handle_client(websocket):
                     working_dir_hint = data.get("working_dir") or WORKING_DIR
                     session = _get_or_create_session(session_id, working_dir=working_dir_hint)
 
-                    # Acknowledge session and broadcast current working dir
+                    # Acknowledge session
                     await websocket.send(json.dumps({
                         "type": "session",
                         "session_id": session_id,
                         "messages": [{"role": m.role, "content": m.content} for m in session.agent.state.messages]
                     }))
-                    await send_system(websocket, f"Working directory: {session.agent.state.working_dir}")
 
                 if msg.type == MessageType.USER_INPUT:
                     if not msg.text:

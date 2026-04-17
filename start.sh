@@ -42,10 +42,23 @@ NEXT_PUBLIC_BACKEND_URL=ws://localhost:${FC_BACKEND_PORT}
 NEXT_PUBLIC_FRONTEND_PORT=${FC_FRONTEND_PORT}
 EOF
 
-if [ -d frontend/.next ]; then
-    echo "[1/5] Frontend build found, skipping build step."
+# Build frontend
+REBUILD=0
+[[ "$1" == "--rebuild" || "$1" == "-r" ]] && REBUILD=1
+
+# Auto-detect changes in src or public
+if [ -d frontend/.next ] && [ "$REBUILD" -eq 0 ]; then
+    if [ "$(find frontend/src frontend/public -newer frontend/.next 2>/dev/null | wc -l)" -gt 0 ]; then
+        echo "[1/5] Changes detected in frontend source, rebuilding..."
+        REBUILD=1
+    fi
+fi
+
+if [ -d frontend/.next ] && [ "$REBUILD" -eq 0 ]; then
+    echo "[1/5] Frontend build found. (Use --rebuild to force fresh build)"
 else
     echo "[1/5] Building Frontend (production)..."
+    rm -rf frontend/.next
     (cd frontend && npm run build) > logs/build.log 2>&1 || { echo "ERROR: Build failed. Check logs/build.log"; exit 1; }
 fi
 
