@@ -1085,8 +1085,8 @@ export default function Home() {
         />
       )}
 
-      {/* Directory picker — shown when user explicitly opens it (already has a project) */}
-      {dirPickerOpen && workingDir && !showOnboarding && (
+      {/* Directory picker — shown when user explicitly opens it */}
+      {dirPickerOpen && !showOnboarding && (
         <DirPicker
           onSelect={(dir) => { handleDirSelect(dir); setDirPickerOpen(false); }}
           onBrowse={async () => {
