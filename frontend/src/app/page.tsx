@@ -1326,7 +1326,11 @@ export default function Home() {
              <span className="status-val">{model}</span>
           </div>
           <span className="sep">·</span>
-          <div className="status-item clickable" title="Toggle auto-compact">
+          <div className="status-item clickable" title={
+            contextPct != null
+              ? `${(100 - contextPct).toFixed(0)}% of context remaining until auto-compact. Click to compact now.`
+              : "Context usage unknown"
+          }>
             <span className="status-label">ctx</span>
             <span className="status-val" style={{ color: (contextPct ?? 0) >= compactThreshold ? "var(--status-warning)" : "inherit" }}>
                 {contextPct != null ? `${contextPct.toFixed(0)}%` : "0%"}
