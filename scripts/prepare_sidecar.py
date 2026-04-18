@@ -67,9 +67,11 @@ def main():
     
     print(f"Moving binary to {target_bin}")
     if target_bin.exists():
+        target_bin.chmod(0o755)
         target_bin.unlink()
     shutil.move(str(dist_file), str(target_bin))
-    
+    target_bin.chmod(0o755)
+
     print("\nSuccess! Sidecar binary is ready.")
     print("You can now run 'npm run tauri dev' from the root.")
 

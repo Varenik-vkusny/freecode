@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import OnboardingModal from "./components/OnboardingModal";
 import SettingsPanel from "./components/SettingsPanel";
-import { getApiKey, saveApiKey, sendConfigToBackend, getConfigFromBackend } from "./lib/config";
+import { getApiKey, saveApiKey } from "./lib/config";
 
 import { FolderIcon, GearIcon, EditIcon, SearchIcon, PlusIcon, TrashIcon } from "./components/Icons";
 import { Popover } from "./components/Popover";
@@ -287,7 +287,7 @@ function Welcome({ show, onRun }: { show: boolean; onRun: (cmd: string) => void 
       </div>
       <h1 className="splash-title">FREECODE</h1>
       <p className="splash-subtitle">Your personal agentic coding assistant.</p>
-      
+
       <div className="splash-hints">
         <div className="hint-row clickable" onClick={() => onRun("/model")}>
           <span className="hint-key">/model</span> Choose your intelligence
@@ -298,6 +298,62 @@ function Welcome({ show, onRun }: { show: boolean; onRun: (cmd: string) => void 
         <div className="hint-row clickable" onClick={() => onRun("/help")}>
           <span className="hint-key">/help</span> Review all commands
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectSelectScreen({ onSelect, onBrowse, recents }: {
+  onSelect: (dir: string) => void;
+  onBrowse: () => void;
+  recents: string[];
+}) {
+  const [val, setVal] = useState("");
+  const localRecents = loadRecentDirs();
+  const allRecents = Array.from(new Set([...recents, ...localRecents])).slice(0, 6);
+
+  const submit = (dir: string) => {
+    const d = dir.trim();
+    if (!d) return;
+    saveRecentDir(d);
+    onSelect(d);
+  };
+
+  return (
+    <div className="project-select-screen">
+      <div className="project-select-card">
+        <div className="splash-bird" style={{ marginBottom: 12 }}>
+          <Image src="/logo.svg" width={56} height={56} alt="FreeCode Logo" priority />
+        </div>
+        <h1 className="splash-title" style={{ marginBottom: 4 }}>FREECODE</h1>
+        <p className="splash-subtitle" style={{ marginBottom: 4 }}>Your agentic coding assistant</p>
+        <p style={{ color: "var(--fg-dim)", fontSize: 12, marginBottom: 28, textTransform: "uppercase", letterSpacing: "0.1em" }}>Open a project to get started</p>
+
+        <div className="dir-input-wrapper" style={{ width: "100%", marginBottom: 12 }}>
+          <input
+            className="dir-input"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submit(val); }}
+            placeholder="C:\path\to\project"
+            autoFocus
+          />
+          <button className="dir-browse-icon" onClick={onBrowse} title="Browse...">
+            <FolderIcon />
+          </button>
+        </div>
+
+        {allRecents.length > 0 && (
+          <div className="dir-recents-section" style={{ width: "100%" }}>
+            <div className="dir-recents-label">Recent</div>
+            {allRecents.map(d => (
+              <div key={d} className="dir-recent-row" onClick={() => submit(d)}>
+                <FolderIcon />
+                <span className="dir-recent-text" title={d}>{d}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -438,16 +494,7 @@ export default function Home() {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("freecode:working_dir") || null;
   });
-  const [messages, setMessages] = useState<MsgKind[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const id = getOrCreateSessionId();
-      const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-      return sessions[id]?.messages || [];
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState<MsgKind[]>([]);
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [working, setWorking] = useState(false);
@@ -468,14 +515,7 @@ export default function Home() {
   const [sessionSearch, setSessionSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
-  const [savedSessions, setSavedSessions] = useState<Record<string, { id: string, name: string, updatedAt: number, messages: MsgKind[], workingDir?: string }>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      return JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-    } catch {
-      return {};
-    }
-  });
+  const [savedSessions, setSavedSessions] = useState<Record<string, { id: string, name: string, updatedAt: number, workingDir?: string }>>({});
   const [compactThreshold, setCompactThreshold] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_THRESHOLD;
     return Number(localStorage.getItem(COMPACT_THRESHOLD_KEY) ?? DEFAULT_THRESHOLD);
@@ -489,11 +529,39 @@ export default function Home() {
   const [editName, setEditName] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(() => {
     if (typeof window === "undefined") return false;
-    return !getApiKey();
+    return !getApiKey();  // initial guess — may be overridden once backend responds
   });
+
+  // On mount, fetch backend config with retries — backend may still be starting up
+  useEffect(() => {
+    const BACKEND_HTTP = (process.env.NEXT_PUBLIC_BACKEND_URL || "ws://127.0.0.1:47820")
+      .replace(/^ws/, "http");
+    let cancelled = false;
+    async function tryFetch(attemptsLeft: number, delay: number) {
+      if (cancelled) return;
+      try {
+        const r = await fetch(`${BACKEND_HTTP}/api/config`);
+        if (!r.ok) throw new Error("not ok");
+        const cfg: { api_key?: string } = await r.json();
+        if (cancelled) return;
+        if (cfg.api_key) {
+          saveApiKey(cfg.api_key);
+          setShowOnboarding(false);
+        }
+      } catch {
+        if (attemptsLeft > 0 && !cancelled) {
+          setTimeout(() => tryFetch(attemptsLeft - 1, Math.min(delay * 1.5, 5000)), delay);
+        }
+      }
+    }
+    tryFetch(8, 600);
+    return () => { cancelled = true; };
+  }, []);
   const [showSettings, setShowSettings] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const backendHasKey = useRef<boolean>(false);
+  const autoCompactFiredAbove = useRef<boolean>(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -512,21 +580,6 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
-    // Initial config sync from backend to avoid repeated onboarding and restore project
-    getConfigFromBackend().then(cfg => {
-      if (cfg?.api_key) {
-        saveApiKey(cfg.api_key);
-        setShowOnboarding(false);
-
-
-        // Restore last project if no local state
-        const localDir = localStorage.getItem("freecode:working_dir");
-        if (cfg.working_dir && !localDir) {
-          setWorkingDir(cfg.working_dir);
-          localStorage.setItem("freecode:working_dir", cfg.working_dir);
-        }
-      }
-    });
   }, []);
 
   // Track pending tool calls so we can attach results
@@ -552,9 +605,10 @@ export default function Home() {
 
   const handleOnboardingComplete = useCallback(async (apiKey: string) => {
     saveApiKey(apiKey);
+    backendHasKey.current = false;
     setShowOnboarding(false);
 
-    // Reconnect WebSocket so backend picks up the new API key
+    // Reconnect WebSocket so backend picks up the new API key via __init__
     if (wsRef.current) {
       wsRef.current.close();
     }
@@ -587,23 +641,17 @@ export default function Home() {
       return;
     }
     if (msg.type === "sessions_list") {
-      const backendSessions = (msg.sessions ?? []) as Array<{ id: string; name: string; updated_at: string; working_dir: string; model: string }>;
-      setSavedSessions(prev => {
-        const next = { ...prev };
-        for (const s of backendSessions) {
-          // Merge backend sessions in — don't overwrite current session's live messages
-          if (!next[s.id] || next[s.id].messages.length === 0) {
-            next[s.id] = {
-              id: s.id,
-              name: s.name,
-              updatedAt: new Date(s.updated_at ?? 0).getTime(),
-              messages: next[s.id]?.messages ?? [],
-              workingDir: s.working_dir,
-            };
-          }
-        }
-        return next;
-      });
+      const backendSessions = (msg.sessions ?? []) as Array<{ id: string; name: string; updated_at: string; working_dir: string }>;
+      const next: Record<string, { id: string; name: string; updatedAt: number; workingDir?: string }> = {};
+      for (const s of backendSessions) {
+        next[s.id] = {
+          id: s.id,
+          name: s.name,
+          updatedAt: new Date(s.updated_at ?? 0).getTime(),
+          workingDir: s.working_dir,
+        };
+      }
+      setSavedSessions(next);
       return;
     }
 
@@ -702,23 +750,6 @@ export default function Home() {
     });
 
     setTimeout(() => scrollToBottom(), 20);
-
-    // Persist to localStorage and update session list (without cascading render)
-    setMessages(msgs => {
-      const firstUserMsg = msgs.find((m): m is Extract<MsgKind, { kind: "user" }> => m.kind === "user");
-      const name = firstUserMsg?.text.slice(0, 30) || "New Session";
-      const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-      sessions[sessionId] = {
-        id: sessionId,
-        name: name.length === 30 ? name + "..." : name,
-        updatedAt: Date.now(),
-        messages: msgs,
-        workingDir: workingDir ?? undefined,
-      };
-      localStorage.setItem("freecode:sessions", JSON.stringify(sessions));
-      setSavedSessions(sessions);
-      return msgs;
-    });
   }, [scrollToBottom, sessionId, workingDir]);
 
   // Persist settings
@@ -732,12 +763,16 @@ export default function Home() {
     localStorage.setItem("freecode:model", model);
   }, [model]);
 
-  // Auto-compact when threshold exceeded
+  // Auto-compact when threshold exceeded — fire once per crossing, reset when pct drops back
   useEffect(() => {
-    if (autoCompact && contextPct != null && contextPct >= compactThreshold && messages.length > 5) {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "user_input", text: "Please summarize our conversation so far to compact the context.", effort, session_id: sessionId }));
-      }
+    if (contextPct == null) return;
+    if (contextPct < compactThreshold) {
+      autoCompactFiredAbove.current = false;
+      return;
+    }
+    if (autoCompact && !autoCompactFiredAbove.current && messages.length > 5 && wsRef.current?.readyState === WebSocket.OPEN) {
+      autoCompactFiredAbove.current = true;
+      wsRef.current.send(JSON.stringify({ type: "user_input", text: "Please summarize our conversation so far to compact the context.", effort, session_id: sessionId }));
     }
   }, [contextPct, autoCompact, compactThreshold, effort, sessionId]);
 
@@ -755,26 +790,28 @@ export default function Home() {
         retryDelay = 1000;
         // Re-announce session + working dir to backend after connect/reconnect
         const savedDir = localStorage.getItem("freecode:working_dir");
-        const savedSes = (() => { try { return JSON.parse(localStorage.getItem("freecode:sessions") || "{}"); } catch { return {}; } })();
         const sesId = localStorage.getItem(SESSION_ID_KEY) || sessionId;
-        const sesDir = savedSes[sesId]?.workingDir || savedDir;
-        const apiKey = localStorage.getItem("freecode:api_key");
+        const sesDir = savedDir;
+        const initMsg: Record<string, string> = {
+          type: "user_input",
+          text: "__init__",
+          session_id: sesId,
+          model: localStorage.getItem("freecode:model") || DEFAULT_MODEL
+        };
+        if (sesDir) initMsg.working_dir = sesDir;
+        if (!backendHasKey.current) {
+          const apiKey = localStorage.getItem("freecode:api_key");
+          if (apiKey) initMsg.api_key = apiKey;
+        }
+        ws.send(JSON.stringify(initMsg));
         if (sesDir) {
-          ws.send(JSON.stringify({ 
-            type: "user_input", 
-            text: "__init__", 
-            session_id: sesId, 
-            working_dir: sesDir, 
-            api_key: apiKey,
-            model: localStorage.getItem("freecode:model") || DEFAULT_MODEL 
-          }));
-          // Request sessions list for this working dir
           ws.send(JSON.stringify({ type: "list_sessions", working_dir: sesDir, session_id: sesId }));
         }
       };
       ws.onclose = () => {
         if (wsRef.current === ws) {
           setConnected(false);
+          setWorking(false); // Never leave UI stuck if backend drops mid-response
           wsRef.current = null;
         }
         if (!dead) retryTimeout = setTimeout(connect, retryDelay = Math.min(retryDelay * 2, 10000));
@@ -866,23 +903,7 @@ export default function Home() {
     
     setInput("");
     setWorking(true);
-    setMessages(prev => {
-      const next: MsgKind[] = [...prev, { kind: "user", text }];
-      // Sync sessions
-      const firstUserMsg = next.find((m): m is Extract<MsgKind, { kind: "user" }> => m.kind === "user");
-      const name = firstUserMsg?.text.slice(0, 30) || "New Session";
-      const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-      sessions[sessionId] = {
-        id: sessionId,
-        name: name.length === 30 ? name + "..." : name,
-        updatedAt: Date.now(),
-        messages: next,
-        workingDir: workingDir ?? undefined,
-      };
-      localStorage.setItem("freecode:sessions", JSON.stringify(sessions));
-      setSavedSessions(sessions);
-      return next;
-    });
+    setMessages(prev => [...prev, { kind: "user", text }]);
     setTimeout(() => scrollToBottom(true), 20);
     wsRef.current.send(JSON.stringify({ type: "user_input", text, effort, working_dir: workingDir ?? ".", model, session_id: sessionId }));
   }, [input, paletteOpen, paletteMatches, paletteIdx, runCommand, scrollToBottom, model, workingDir, effort, sessionId]);
@@ -978,13 +999,14 @@ export default function Home() {
   };
 
   const handleDirSelect = (dir: string) => {
-    setWorkingDir(dir);
+    if (dir === workingDir) return;
+    // Start fresh session for the new project
+    const newSessionId = generateSessionId();
+    localStorage.setItem(SESSION_ID_KEY, newSessionId);
     localStorage.setItem("freecode:working_dir", dir);
     saveRecentDir(dir);
-    // Request sessions for this project directory
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "list_sessions", working_dir: dir, session_id: sessionId }));
-    }
+    // Full reload so session state, messages, and backend session all reset cleanly
+    window.location.reload();
   };
 
   if (!isMounted) {
@@ -1038,8 +1060,8 @@ export default function Home() {
         />
       )}
 
-      {/* Directory picker — shown when no project or user opens it */}
-      {(!workingDir || dirPickerOpen) && !showOnboarding && (
+      {/* Directory picker — shown when user explicitly opens it */}
+      {dirPickerOpen && !showOnboarding && (
         <DirPicker
           onSelect={(dir) => { handleDirSelect(dir); setDirPickerOpen(false); }}
           onBrowse={async () => {
@@ -1125,10 +1147,13 @@ export default function Home() {
               </div>
             </div>
             <div className="sidebar-list">
-              {Object.values(savedSessions)
-                .filter(ses => (workingDir === null || ses.workingDir === workingDir) && ses.name.toLowerCase().includes(sessionSearch.toLowerCase()))
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-                .map(ses => (
+              {((): React.ReactNode => {
+                const filtered = Object.values(savedSessions)
+                  .filter(ses => workingDir !== null && ses.workingDir === workingDir && ses.name.toLowerCase().includes(sessionSearch.toLowerCase()))
+                  .sort((a, b) => b.updatedAt - a.updatedAt);
+                if (!workingDir) return <div className="sidebar-empty">No project selected</div>;
+                if (filtered.length === 0) return <div className="sidebar-empty">{sessionSearch ? "No matches" : "No saved sessions"}</div>;
+                return filtered.map(ses => (
                   <div 
                     key={ses.id} 
                     className={`sidebar-item ${ses.id === sessionId ? "sidebar-item-active" : ""}`}
@@ -1152,7 +1177,6 @@ export default function Home() {
                                 setSavedSessions(prev => {
                                   const next = { ...prev };
                                   next[ses.id] = { ...next[ses.id], name: editName.trim() };
-                                  localStorage.setItem("freecode:sessions", JSON.stringify(next));
                                   return next;
                                 });
                               }
@@ -1191,7 +1215,6 @@ export default function Home() {
                               setSavedSessions(prev => {
                                 const next = { ...prev };
                                 delete next[ses.id];
-                                localStorage.setItem("freecode:sessions", JSON.stringify(next));
                                 return next;
                               });
                               if (ses.id === sessionId) {
@@ -1208,17 +1231,35 @@ export default function Home() {
                     </div>
                     <div className="sidebar-item-time">{new Date(ses.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
-              ))}
-              {Object.keys(savedSessions).length === 0 && (
-                <div className="sidebar-empty">No saved sessions</div>
-              )}
+                ));
+              })()}
             </div>
           </div>
         </div>
 
         <div className="chat-col" onClick={() => { if (sidebarOpen) setSidebarOpen(false); }}>
-          {/* Messages area */}
-          <div className="messages-area" ref={messagesAreaRef}>
+          {/* No-project state */}
+          {!workingDir && !showOnboarding && (
+            <ProjectSelectScreen
+              onSelect={(dir) => { handleDirSelect(dir); }}
+              onBrowse={async () => {
+                const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+                if (isTauri) {
+                  const { open } = await import("@tauri-apps/plugin-dialog");
+                  const picked = await open({ directory: true, multiple: false });
+                  if (picked) handleDirSelect(picked as string);
+                  return;
+                }
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({ type: "pick_dir", session_id: sessionId }));
+                }
+              }}
+              recents={serverRecents}
+            />
+          )}
+
+          {/* Messages area — only shown when project is selected */}
+          {workingDir && <div className="messages-area" ref={messagesAreaRef}>
             <Welcome show={messages.length === 0} onRun={runCommand} />
             {messages.map(renderMessage)}
             {working && (
@@ -1227,17 +1268,18 @@ export default function Home() {
               </div>
             )}
             <div ref={bottomRef} />
-          </div>
+          </div>}
 
-          {/* Input Section */}
+          {/* Input Section — only shown when project is selected */}
+          {workingDir && (
           <div className="input-outer">
             {connectionError && <div className="connection-error-banner">✗ {connectionError}</div>}
             {!connected ? (
               <div className="input-area input-area-offline">
                 <span className="status-dot offline">●</span>
                 <span className="input-offline-msg">
-                  {typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ 
-                    ? "Disconnected — Attempting to reconnect..." 
+                  {typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__
+                    ? "Disconnected — Attempting to reconnect..."
                     : "Disconnected — run <code>start.bat</code> to reconnect"}
                 </span>
               </div>
@@ -1278,6 +1320,7 @@ export default function Home() {
               </div>
             )}
           </div>
+          )}
 
           {/* Removed standalone ctx-bar to prevent layout shift */}
         </div>
@@ -1291,20 +1334,24 @@ export default function Home() {
           </span>
           <div className="status-item">
             <span className={`status-dot ${connected ? "online" : "offline"}`}>●</span>
-            <span className="status-label">v2.0</span>
           </div>
+          {workingDir && <>
           <span className="sep">·</span>
           <div className="status-item clickable" onClick={() => setModelPickerOpen(true)}>
              <span className="status-label">model</span>
              <span className="status-val">{model}</span>
           </div>
           <span className="sep">·</span>
-          <div className="status-item clickable" title="Toggle auto-compact">
+          <div className="status-item clickable" title={
+            contextPct != null
+              ? `${(100 - contextPct).toFixed(0)}% of context remaining until auto-compact. Click to compact now.`
+              : "Context usage unknown"
+          }>
             <span className="status-label">ctx</span>
             <span className="status-val" style={{ color: (contextPct ?? 0) >= compactThreshold ? "var(--status-warning)" : "inherit" }}>
                 {contextPct != null ? `${contextPct.toFixed(0)}%` : "0%"}
             </span>
-            <div className="ctx-auto-group" 
+            <div className="ctx-auto-group"
                  onWheel={(e) => {
                    e.preventDefault();
                    const delta = e.deltaY < 0 ? 1 : -1;
@@ -1320,9 +1367,8 @@ export default function Home() {
                 }} />
                 <span>{autoCompact ? "auto" : "manual"}</span>
               </label>
-              
               {autoCompact && (isEditingThreshold ? (
-                <input 
+                <input
                   autoFocus
                   className="ctx-threshold-input"
                   type="number"
@@ -1354,13 +1400,16 @@ export default function Home() {
                <span style={{ fontSize: 9, cursor: "pointer", color: "var(--accent-blue)", marginLeft: 4 }} onClick={() => runCommand("/compact")}>[compact]</span>
             )}
           </div>
+          </>}
         </div>
         <div className="status-right">
+          {workingDir && <>
           <div className="status-item clickable" onClick={() => runCommand("/effort")}>
             <span className="status-label">effort</span>
             <EffortIcon effort={effort} />
           </div>
           <span className="sep">·</span>
+          </>}
           <div className="status-item clickable" onClick={() => setShowSettings(true)} title="Open settings">
             <GearIcon />
           </div>
