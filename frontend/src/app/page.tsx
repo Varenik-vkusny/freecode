@@ -532,24 +532,36 @@ export default function Home() {
     return !getApiKey();  // initial guess — may be overridden once backend responds
   });
 
-  // On mount, check backend for API key — overrides localStorage (persists across installs)
+  // On mount, fetch backend config with retries — backend may still be starting up
   useEffect(() => {
     const BACKEND_HTTP = (process.env.NEXT_PUBLIC_BACKEND_URL || "ws://127.0.0.1:47820")
       .replace(/^ws/, "http");
-    fetch(`${BACKEND_HTTP}/api/config`)
-      .then(r => r.json())
-      .then((cfg: { api_key?: string }) => {
+    let cancelled = false;
+    async function tryFetch(attemptsLeft: number, delay: number) {
+      if (cancelled) return;
+      try {
+        const r = await fetch(`${BACKEND_HTTP}/api/config`);
+        if (!r.ok) throw new Error("not ok");
+        const cfg: { api_key?: string } = await r.json();
+        if (cancelled) return;
         if (cfg.api_key) {
           saveApiKey(cfg.api_key);
           setShowOnboarding(false);
         }
-      })
-      .catch(() => {/* backend not up yet — rely on localStorage */});
+      } catch {
+        if (attemptsLeft > 0 && !cancelled) {
+          setTimeout(() => tryFetch(attemptsLeft - 1, Math.min(delay * 1.5, 5000)), delay);
+        }
+      }
+    }
+    tryFetch(8, 600);
+    return () => { cancelled = true; };
   }, []);
   const [showSettings, setShowSettings] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const backendHasKey = useRef<boolean>(false);
+  const autoCompactFiredAbove = useRef<boolean>(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -751,12 +763,16 @@ export default function Home() {
     localStorage.setItem("freecode:model", model);
   }, [model]);
 
-  // Auto-compact when threshold exceeded
+  // Auto-compact when threshold exceeded — fire once per crossing, reset when pct drops back
   useEffect(() => {
-    if (autoCompact && contextPct != null && contextPct >= compactThreshold && messages.length > 5) {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "user_input", text: "Please summarize our conversation so far to compact the context.", effort, session_id: sessionId }));
-      }
+    if (contextPct == null) return;
+    if (contextPct < compactThreshold) {
+      autoCompactFiredAbove.current = false;
+      return;
+    }
+    if (autoCompact && !autoCompactFiredAbove.current && messages.length > 5 && wsRef.current?.readyState === WebSocket.OPEN) {
+      autoCompactFiredAbove.current = true;
+      wsRef.current.send(JSON.stringify({ type: "user_input", text: "Please summarize our conversation so far to compact the context.", effort, session_id: sessionId }));
     }
   }, [contextPct, autoCompact, compactThreshold, effort, sessionId]);
 

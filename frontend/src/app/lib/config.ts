@@ -1,5 +1,5 @@
-// Configuration helpers for API key
 const API_KEY_KEY = "freecode:api_key";
+const BACKEND_HTTP = (process.env.NEXT_PUBLIC_BACKEND_URL || "ws://127.0.0.1:47820").replace(/^ws/, "http");
 
 export function getApiKey(): string | null {
   if (typeof window === "undefined") return null;
@@ -23,32 +23,18 @@ export function hasOnboarded(): boolean {
   return !!getApiKey();
 }
 
-export async function getConfigFromBackend(): Promise<{ api_key?: string; working_dir?: string } | null> {
-  // Try to fetch from backend API
+export async function sendConfigToBackend(apiKey: string): Promise<boolean> {
+  // Always persist locally first so the key is never lost
+  saveApiKey(apiKey);
   try {
-    const response = await fetch("/api/config");
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (error) {
-    console.error("Failed to fetch config from backend:", error);
-    return null;
-  }
-}
-
-export async function sendConfigToBackend(
-  apiKey: string
-): Promise<boolean> {
-  // Always send to backend API
-  try {
-    const response = await fetch("/api/config", {
+    const response = await fetch(`${BACKEND_HTTP}/api/config`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: apiKey }),
     });
     return response.ok;
-  } catch (error) {
-    console.error("Failed to send config to backend:", error);
+  } catch {
+    // Backend not reachable — key is still in localStorage and will be sent on next WS connect
     return false;
   }
 }
-

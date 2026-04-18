@@ -173,7 +173,18 @@ HOST = os.environ.get("FC_BACKEND_HOST") or _cfg.get("backend_host", "localhost"
 
 
 async def pick_directory_async():
-    """Open a native folder picker dialog and return the path."""
+    """Open a native folder picker dialog and return the path (30s timeout)."""
+    try:
+        return await asyncio.wait_for(_pick_directory_inner(), timeout=30)
+    except asyncio.TimeoutError:
+        logger.warning("Folder picker timed out after 30s")
+        return ""
+    except Exception as e:
+        logger.error(f"Folder picker error: {e}")
+        return ""
+
+
+async def _pick_directory_inner() -> str:
     if os.name == "nt":
         ps_cmd = """
         $App = New-Object -ComObject Shell.Application
@@ -333,6 +344,8 @@ async def get_config():
         "working_dir": cfg.get("working_dir", WORKING_DIR),
         "recent_dirs": cfg.get("recent_dirs", []),
         "thinking": cfg.get("thinking", THINKING),
+        "auto_compact": cfg.get("auto_compact", True),
+        "compact_threshold": cfg.get("compact_threshold", 80),
     }
 
 
@@ -341,6 +354,8 @@ class ConfigUpdate(BaseModel):
     model: str | None = None
     working_dir: str | None = None
     thinking: bool | None = None
+    auto_compact: bool | None = None
+    compact_threshold: int | None = None
 
 
 @app.post("/api/config")
@@ -357,6 +372,10 @@ async def update_config(update: ConfigUpdate):
             cfg["working_dir"] = update.working_dir
         if update.thinking is not None:
             cfg["thinking"] = update.thinking
+        if update.auto_compact is not None:
+            cfg["auto_compact"] = update.auto_compact
+        if update.compact_threshold is not None:
+            cfg["compact_threshold"] = max(10, min(95, update.compact_threshold))
         _CONFIG_PATH.write_text(_json.dumps(cfg, indent=2))
         return {"status": "ok"}
     except Exception as e:
