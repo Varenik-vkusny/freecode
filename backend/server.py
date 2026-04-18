@@ -122,6 +122,20 @@ def _save_working_dir(path: str):
         logger.warning(f"Could not save working_dir to freecode.json: {e}")
 
 
+def _get_version() -> str:
+    """Read version from tauri.conf.json, fallback to package.json, then '0.0.0'."""
+    for candidate in [
+        _ROOT / "src-tauri" / "tauri.conf.json",
+        _ROOT / "package.json",
+    ]:
+        try:
+            if candidate.exists():
+                return _json.loads(candidate.read_text()).get("version", "0.0.0")
+        except Exception:
+            pass
+    return "0.0.0"
+
+
 def _load_config() -> dict:
     try:
         if _CONFIG_PATH.exists():
@@ -278,9 +292,14 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(2)
             try:
                 os.kill(parent_pid, 0)
-            except (OSError, ProcessLookupError, AttributeError):
+            except ProcessLookupError:
+                # Process doesn't exist
                 logger.info("Parent process gone, shutting down backend...")
                 os._exit(0)
+            except (PermissionError, OSError):
+                # PermissionError = access denied but process still alive (Windows)
+                # OSError for other reasons — assume alive
+                pass
             except Exception:
                 pass
 
@@ -369,6 +388,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.send_text(json.dumps({
             "type": "hello",
             "server": "freecode-backend",
+            "version": _get_version(),
             "recent_dirs": recents,
         }))
 
