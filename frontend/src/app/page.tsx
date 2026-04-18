@@ -322,11 +322,12 @@ function ProjectSelectScreen({ onSelect, onBrowse, recents }: {
   return (
     <div className="project-select-screen">
       <div className="project-select-card">
-        <div className="splash-bird" style={{ marginBottom: 8 }}>
-          <Image src="/logo.svg" width={48} height={48} alt="FreeCode Logo" priority />
+        <div className="splash-bird" style={{ marginBottom: 12 }}>
+          <Image src="/logo.svg" width={56} height={56} alt="FreeCode Logo" priority />
         </div>
-        <h1 className="splash-title" style={{ fontSize: 22, marginBottom: 4 }}>Open a Project</h1>
-        <p className="splash-subtitle" style={{ marginBottom: 24 }}>Select the folder you want to work in</p>
+        <h1 className="splash-title" style={{ marginBottom: 4 }}>FREECODE</h1>
+        <p className="splash-subtitle" style={{ marginBottom: 4 }}>Your agentic coding assistant</p>
+        <p style={{ color: "var(--dim3)", fontSize: 11, marginBottom: 28, textTransform: "uppercase", letterSpacing: "0.1em" }}>Open a project to get started</p>
 
         <div className="dir-input-wrapper" style={{ width: "100%", marginBottom: 12 }}>
           <input
@@ -1361,6 +1362,7 @@ export default function Home() {
             <span className={`status-dot ${connected ? "online" : "offline"}`}>●</span>
             <span className="status-label">v2.0</span>
           </div>
+          {workingDir && <>
           <span className="sep">·</span>
           <div className="status-item clickable" onClick={() => setModelPickerOpen(true)}>
              <span className="status-label">model</span>
@@ -1372,7 +1374,7 @@ export default function Home() {
             <span className="status-val" style={{ color: (contextPct ?? 0) >= compactThreshold ? "var(--status-warning)" : "inherit" }}>
                 {contextPct != null ? `${contextPct.toFixed(0)}%` : "0%"}
             </span>
-            <div className="ctx-auto-group" 
+            <div className="ctx-auto-group"
                  onWheel={(e) => {
                    e.preventDefault();
                    const delta = e.deltaY < 0 ? 1 : -1;
@@ -1388,9 +1390,8 @@ export default function Home() {
                 }} />
                 <span>{autoCompact ? "auto" : "manual"}</span>
               </label>
-              
               {autoCompact && (isEditingThreshold ? (
-                <input 
+                <input
                   autoFocus
                   className="ctx-threshold-input"
                   type="number"
@@ -1422,13 +1423,16 @@ export default function Home() {
                <span style={{ fontSize: 9, cursor: "pointer", color: "var(--accent-blue)", marginLeft: 4 }} onClick={() => runCommand("/compact")}>[compact]</span>
             )}
           </div>
+          </>}
         </div>
         <div className="status-right">
+          {workingDir && <>
           <div className="status-item clickable" onClick={() => runCommand("/effort")}>
             <span className="status-label">effort</span>
             <EffortIcon effort={effort} />
           </div>
           <span className="sep">·</span>
+          </>}
           <div className="status-item clickable" onClick={() => setShowSettings(true)} title="Open settings">
             <GearIcon />
           </div>

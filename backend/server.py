@@ -516,11 +516,41 @@ def _event_to_server_message(event: dict) -> ServerMessage:
         return ServerMessage(type=MessageType.ERROR, error=f"Unknown event type: {event_type}")
 
 
+def _kill_port(port: int):
+    """Kill whatever process is listening on port (Windows + Unix)."""
+    import subprocess, time
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                f'netstat -ano | findstr ":{port} "',
+                shell=True, capture_output=True, text=True
+            )
+            for line in result.stdout.splitlines():
+                if f":{port} " in line and "LISTENING" in line:
+                    pid = line.strip().split()[-1]
+                    subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+                    logger.info(f"Killed PID {pid} on port {port}")
+        else:
+            subprocess.run(f"fuser -k {port}/tcp", shell=True, capture_output=True)
+        time.sleep(0.5)
+    except Exception as e:
+        logger.warning(f"_kill_port failed: {e}")
+
+
 def main():
+    import time
     bind_host = "127.0.0.1" if HOST == "localhost" else HOST
     logger.info(f"Starting FastAPI server on ws://{bind_host}:{PORT}")
     logger.info(f"Model: {MODEL}, Thinking: {THINKING}, WorkingDir: {WORKING_DIR}")
-    uvicorn.run(app, host=bind_host, port=PORT, log_level="warning")
+    try:
+        uvicorn.run(app, host=bind_host, port=PORT, log_level="warning")
+    except OSError as e:
+        if getattr(e, "errno", None) in (98, 10048) or "address already in use" in str(e).lower():
+            logger.info(f"Port {PORT} in use — killing existing process and retrying...")
+            _kill_port(PORT)
+            uvicorn.run(app, host=bind_host, port=PORT, log_level="warning")
+        else:
+            raise
 
 
 if __name__ == "__main__":
