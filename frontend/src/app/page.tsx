@@ -518,7 +518,6 @@ export default function Home() {
   const [effort, setEffort] = useState<typeof EFFORT_LEVELS[number]>("MEDIUM");
   const [paletteIdx, setPaletteIdx] = useState(0);
   const [serverRecents, setServerRecents] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("…");
   const [contextPct, setContextPct] = useState<number | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [dirPickerOpen, setDirPickerOpen] = useState(false);
@@ -611,7 +610,6 @@ export default function Home() {
     // Non-chat protocol messages — handle without touching setMessages
     if (msg.type === "hello") {
       if (msg.recent_dirs) setServerRecents(msg.recent_dirs);
-      if (msg.version) setAppVersion(msg.version);
       return;
     }
 
@@ -1363,7 +1361,6 @@ export default function Home() {
           </span>
           <div className="status-item">
             <span className={`status-dot ${connected ? "online" : "offline"}`}>●</span>
-            <span className="status-label">v{appVersion}</span>
           </div>
           {workingDir && <>
           <span className="sep">·</span>
