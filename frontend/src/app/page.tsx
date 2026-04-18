@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import OnboardingModal from "./components/OnboardingModal";
 import SettingsPanel from "./components/SettingsPanel";
@@ -327,7 +327,7 @@ function ProjectSelectScreen({ onSelect, onBrowse, recents }: {
         </div>
         <h1 className="splash-title" style={{ marginBottom: 4 }}>FREECODE</h1>
         <p className="splash-subtitle" style={{ marginBottom: 4 }}>Your agentic coding assistant</p>
-        <p style={{ color: "var(--dim3)", fontSize: 11, marginBottom: 28, textTransform: "uppercase", letterSpacing: "0.1em" }}>Open a project to get started</p>
+        <p style={{ color: "var(--fg-dim)", fontSize: 12, marginBottom: 28, textTransform: "uppercase", letterSpacing: "0.1em" }}>Open a project to get started</p>
 
         <div className="dir-input-wrapper" style={{ width: "100%", marginBottom: 12 }}>
           <input
@@ -1172,10 +1172,13 @@ export default function Home() {
               </div>
             </div>
             <div className="sidebar-list">
-              {Object.values(savedSessions)
-                .filter(ses => (workingDir === null || ses.workingDir === workingDir) && ses.name.toLowerCase().includes(sessionSearch.toLowerCase()))
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-                .map(ses => (
+              {((): React.ReactNode => {
+                const filtered = Object.values(savedSessions)
+                  .filter(ses => workingDir !== null && ses.workingDir === workingDir && ses.name.toLowerCase().includes(sessionSearch.toLowerCase()))
+                  .sort((a, b) => b.updatedAt - a.updatedAt);
+                if (!workingDir) return <div className="sidebar-empty">No project selected</div>;
+                if (filtered.length === 0) return <div className="sidebar-empty">{sessionSearch ? "No matches" : "No saved sessions"}</div>;
+                return filtered.map(ses => (
                   <div 
                     key={ses.id} 
                     className={`sidebar-item ${ses.id === sessionId ? "sidebar-item-active" : ""}`}
@@ -1255,10 +1258,8 @@ export default function Home() {
                     </div>
                     <div className="sidebar-item-time">{new Date(ses.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
-              ))}
-              {Object.keys(savedSessions).length === 0 && (
-                <div className="sidebar-empty">No saved sessions</div>
-              )}
+                ));
+              })()}
             </div>
           </div>
         </div>
