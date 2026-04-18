@@ -1025,13 +1025,14 @@ export default function Home() {
   };
 
   const handleDirSelect = (dir: string) => {
-    setWorkingDir(dir);
+    if (dir === workingDir) return;
+    // Start fresh session for the new project
+    const newSessionId = generateSessionId();
+    localStorage.setItem(SESSION_ID_KEY, newSessionId);
     localStorage.setItem("freecode:working_dir", dir);
     saveRecentDir(dir);
-    // Request sessions for this project directory
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "list_sessions", working_dir: dir, session_id: sessionId }));
-    }
+    // Full reload so session state, messages, and backend session all reset cleanly
+    window.location.reload();
   };
 
   if (!isMounted) {
