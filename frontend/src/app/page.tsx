@@ -494,17 +494,7 @@ export default function Home() {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("freecode:working_dir") || null;
   });
-  const [messages, setMessages] = useState<MsgKind[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const id = getOrCreateSessionId();
-      const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-      // Filter out stale error messages that shouldn't persist across sessions
-      return (sessions[id]?.messages || []).filter((m: MsgKind) => m.kind !== "error");
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState<MsgKind[]>([]);
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [working, setWorking] = useState(false);
@@ -525,14 +515,7 @@ export default function Home() {
   const [sessionSearch, setSessionSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
-  const [savedSessions, setSavedSessions] = useState<Record<string, { id: string, name: string, updatedAt: number, messages: MsgKind[], workingDir?: string }>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      return JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-    } catch {
-      return {};
-    }
-  });
+  const [savedSessions, setSavedSessions] = useState<Record<string, { id: string, name: string, updatedAt: number, workingDir?: string }>>({});
   const [compactThreshold, setCompactThreshold] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_THRESHOLD;
     return Number(localStorage.getItem(COMPACT_THRESHOLD_KEY) ?? DEFAULT_THRESHOLD);
@@ -631,23 +614,17 @@ export default function Home() {
       return;
     }
     if (msg.type === "sessions_list") {
-      const backendSessions = (msg.sessions ?? []) as Array<{ id: string; name: string; updated_at: string; working_dir: string; model: string }>;
-      setSavedSessions(prev => {
-        const next = { ...prev };
-        for (const s of backendSessions) {
-          // Merge backend sessions in — don't overwrite current session's live messages
-          if (!next[s.id] || next[s.id].messages.length === 0) {
-            next[s.id] = {
-              id: s.id,
-              name: s.name,
-              updatedAt: new Date(s.updated_at ?? 0).getTime(),
-              messages: next[s.id]?.messages ?? [],
-              workingDir: s.working_dir,
-            };
-          }
-        }
-        return next;
-      });
+      const backendSessions = (msg.sessions ?? []) as Array<{ id: string; name: string; updated_at: string; working_dir: string }>;
+      const next: Record<string, { id: string; name: string; updatedAt: number; workingDir?: string }> = {};
+      for (const s of backendSessions) {
+        next[s.id] = {
+          id: s.id,
+          name: s.name,
+          updatedAt: new Date(s.updated_at ?? 0).getTime(),
+          workingDir: s.working_dir,
+        };
+      }
+      setSavedSessions(next);
       return;
     }
 
@@ -746,23 +723,6 @@ export default function Home() {
     });
 
     setTimeout(() => scrollToBottom(), 20);
-
-    // Persist to localStorage and update session list (without cascading render)
-    setMessages(msgs => {
-      const firstUserMsg = msgs.find((m): m is Extract<MsgKind, { kind: "user" }> => m.kind === "user");
-      const name = firstUserMsg?.text.slice(0, 30) || "New Session";
-      const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-      sessions[sessionId] = {
-        id: sessionId,
-        name: name.length === 30 ? name + "..." : name,
-        updatedAt: Date.now(),
-        messages: msgs,
-        workingDir: workingDir ?? undefined,
-      };
-      localStorage.setItem("freecode:sessions", JSON.stringify(sessions));
-      setSavedSessions(sessions);
-      return msgs;
-    });
   }, [scrollToBottom, sessionId, workingDir]);
 
   // Persist settings
@@ -799,9 +759,8 @@ export default function Home() {
         retryDelay = 1000;
         // Re-announce session + working dir to backend after connect/reconnect
         const savedDir = localStorage.getItem("freecode:working_dir");
-        const savedSes = (() => { try { return JSON.parse(localStorage.getItem("freecode:sessions") || "{}"); } catch { return {}; } })();
         const sesId = localStorage.getItem(SESSION_ID_KEY) || sessionId;
-        const sesDir = savedSes[sesId]?.workingDir || savedDir;
+        const sesDir = savedDir;
         const initMsg: Record<string, string> = {
           type: "user_input",
           text: "__init__",
@@ -913,23 +872,7 @@ export default function Home() {
     
     setInput("");
     setWorking(true);
-    setMessages(prev => {
-      const next: MsgKind[] = [...prev, { kind: "user", text }];
-      // Sync sessions
-      const firstUserMsg = next.find((m): m is Extract<MsgKind, { kind: "user" }> => m.kind === "user");
-      const name = firstUserMsg?.text.slice(0, 30) || "New Session";
-      const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-      sessions[sessionId] = {
-        id: sessionId,
-        name: name.length === 30 ? name + "..." : name,
-        updatedAt: Date.now(),
-        messages: next,
-        workingDir: workingDir ?? undefined,
-      };
-      localStorage.setItem("freecode:sessions", JSON.stringify(sessions));
-      setSavedSessions(sessions);
-      return next;
-    });
+    setMessages(prev => [...prev, { kind: "user", text }]);
     setTimeout(() => scrollToBottom(true), 20);
     wsRef.current.send(JSON.stringify({ type: "user_input", text, effort, working_dir: workingDir ?? ".", model, session_id: sessionId }));
   }, [input, paletteOpen, paletteMatches, paletteIdx, runCommand, scrollToBottom, model, workingDir, effort, sessionId]);
@@ -1203,7 +1146,6 @@ export default function Home() {
                                 setSavedSessions(prev => {
                                   const next = { ...prev };
                                   next[ses.id] = { ...next[ses.id], name: editName.trim() };
-                                  localStorage.setItem("freecode:sessions", JSON.stringify(next));
                                   return next;
                                 });
                               }
@@ -1242,7 +1184,6 @@ export default function Home() {
                               setSavedSessions(prev => {
                                 const next = { ...prev };
                                 delete next[ses.id];
-                                localStorage.setItem("freecode:sessions", JSON.stringify(next));
                                 return next;
                               });
                               if (ses.id === sessionId) {
