@@ -28,7 +28,7 @@ if not exist venv (
 )
 call venv\Scripts\activate.bat >nul 2>&1
 
-if not exist venv\Lib\site-packages\websockets (
+if not exist venv\Lib\site-packages\fastapi (
     echo [setup] Installing Python dependencies...
     pip install -q -r requirements.txt
 )
@@ -102,10 +102,20 @@ if %USE_TAURI%==1 (
     set PREPARE_SIDECAR=0
     dir src-tauri\bin\server-* >nul 2>&1
     if errorlevel 1 set PREPARE_SIDECAR=1
-    
+
+    if "!PREPARE_SIDECAR!"=="0" (
+        :: Rebuild if server source has changed since last build
+        for /f %%h in ('python -c "import hashlib,pathlib; files=[pathlib.Path(p) for p in ['backend/server.py','agent_core/agent.py','agent_core/tools.py']]; data=b''.join(f.read_bytes() for f in files if f.exists()); print(hashlib.md5(data).hexdigest()[:8])"') do set SRC_HASH=%%h
+        set HASH_FILE=src-tauri\bin\.sidecar_hash
+        set STORED_HASH=
+        if exist "!HASH_FILE!" set /p STORED_HASH=<"!HASH_FILE!"
+        if not "!SRC_HASH!"=="!STORED_HASH!" set PREPARE_SIDECAR=1
+    )
+
     if "!PREPARE_SIDECAR!"=="1" (
-        echo [setup] Preparing Tauri sidecar binary...
+        echo [setup] Building Tauri sidecar binary...
         python scripts\prepare_sidecar.py
+        for /f %%h in ('python -c "import hashlib,pathlib; files=[pathlib.Path(p) for p in ['backend/server.py','agent_core/agent.py','agent_core/tools.py']]; data=b''.join(f.read_bytes() for f in files if f.exists()); print(hashlib.md5(data).hexdigest()[:8])"') do echo %%h>src-tauri\bin\.sidecar_hash
     )
 
     echo [2/5] Launching via Tauri...
