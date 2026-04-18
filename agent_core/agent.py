@@ -4,13 +4,17 @@ import json
 import uuid
 import os
 import platform
+import asyncio
 from typing import AsyncGenerator
 from google import genai
 from google.genai import types
 
 from .state import SessionState, Message
 from .tools import ToolRegistry, FileSystemMCP, ShellMCP
+from .mcp_manager import McpManager
 from .compaction import should_compact, compact_history
+
+MAX_TOOL_ITERATIONS = 50
 
 
 def _build_system_prompt(working_dir: str, model: str) -> str:
@@ -45,8 +49,8 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 
 # Using your tools
  - `filesystem` tool: use for all file operations (ls, read, write, edit, find, delete). Do NOT use shell for file operations.
- - `shell` tool: use for build commands, tests, git, package managers. 
- - IMPORTANT FOR SHELL: You are running on {plat}. If it is Windows, write valid Powershell or CMD commands (e.g. use `Remove-Item` instead of `rm`, `Get-ChildItem` instead of `ls` if needed, etc.). 
+ - `shell` tool: use for build commands, tests, git, package managers.
+ - IMPORTANT FOR SHELL: You are running on {plat}. If it is Windows, write valid Powershell or CMD commands (e.g. use `Remove-Item` instead of `rm`, `Get-ChildItem` instead of `ls` if needed, etc.).
  - Do NOT try to run `bash` commands like `rm -rf` on Windows unless running in WSL or Git Bash.
 
 # Tone and style
@@ -80,10 +84,16 @@ class Agent:
         self.state = SessionState(working_dir=working_dir, token_limit=token_limit)
         self.system_prompt = _build_system_prompt(working_dir, model)
 
-        # Initialize tools
         self.tools = ToolRegistry()
         self.tools.register(FileSystemMCP(working_dir=working_dir))
         self.tools.register(ShellMCP())
+        
+        self.mcp_manager = McpManager()
+        asyncio.create_task(self.mcp_manager.connect_all(self.tools))
+
+    def update_api_key(self, api_key: str):
+        """Replace the SDK client with a fresh one using the new key."""
+        self.client = genai.Client(api_key=api_key)
 
     async def process_input(
         self, user_message: str, effort: str = "MEDIUM", working_dir: str = ".", model: str = None
@@ -92,22 +102,17 @@ class Agent:
         Main agentic loop.
         Yields: {"type": "thinking"|"tool_call"|"tool_result"|"response"|"done"|"error", ...}
         """
-        # Update working directory if changed
         if working_dir and str(self.state.working_dir) != str(os.path.abspath(working_dir)):
             self.state.working_dir = os.path.abspath(working_dir)
             self.system_prompt = _build_system_prompt(working_dir, self.model)
-            # Re-initialize filesystem tool with new working dir
             self.tools.register(FileSystemMCP(working_dir=working_dir))
 
-        # Update model if changed
         if model and self.model != model:
             self.model = model
             self.system_prompt = _build_system_prompt(str(self.state.working_dir), model)
 
-        # Add user message to history
         self.state.add_message("user", user_message)
 
-        # Handle meta-commands
         is_manual_compact = user_message.startswith("/compact")
         is_clear = user_message.startswith("/clear")
 
@@ -118,10 +123,8 @@ class Agent:
             yield {"type": "done", "tokens_used": 0, "token_limit": self.state.token_limit, "context_pct": 0.0}
             return
 
-        # We need at least 3 messages besides the current one to compact anything meaningfully
-        # (e.g., at least one full user/model exchange)
         has_history = len(self.state.messages) > 3
-        
+
         if is_manual_compact:
             if not has_history:
                 msg = "Nothing to compact yet. Start a conversation first!"
@@ -133,10 +136,9 @@ class Agent:
                 context_pct = round(min(tokens_used / limit * 100, 100.0), 1) if limit else 0.0
                 yield {"type": "done", "tokens_used": tokens_used, "token_limit": limit, "context_pct": context_pct}
                 return
-            
+
             async for event in self._compact():
                 yield event
-            # Return immediately since manual compact is a meta-action
             api_tokens = self.state.token_count
             _, limit = self.state.token_usage()
             tokens_used = api_tokens if api_tokens else self.state.token_usage()[0]
@@ -148,23 +150,14 @@ class Agent:
             async for event in self._compact():
                 yield event
 
-
-
-        # Build request
-        messages = [
-            {"role": m.role, "content": m.content} for m in self.state.messages
-        ]
-
         task_id = str(uuid.uuid4())[:8]
-        self.state.add_task(task_id, "tool_loop", {"messages_count": len(messages)})
+        self.state.add_task(task_id, "tool_loop", {"messages_count": len(self.state.messages)})
 
         try:
-            # Call model with tools
-            async for event in self._model_loop(messages, effort=effort):
+            async for event in self._model_loop(effort=effort):
                 yield event
 
             self.state.update_task_status(task_id, "completed")
-            # Prefer real token count from API (set by _model_loop via usage_metadata)
             api_tokens = self.state.token_count
             _, limit = self.state.token_usage()
             tokens_used = api_tokens if api_tokens else self.state.token_usage()[0]
@@ -175,134 +168,120 @@ class Agent:
             self.state.update_task_status(task_id, "failed")
             yield {"type": "error", "error": str(e)}
 
-    async def _model_loop(
-        self, messages: list[dict], effort: str = "MEDIUM"
-    ) -> AsyncGenerator[dict, None]:
-        """Run model with tools until completion."""
-
-        # Build config — Gemma models don't support system_instruction or ThinkingLevel,
-        # so we inject the system prompt as the first user/model turn pair and skip thinking.
+    async def _model_loop(self, effort: str = "MEDIUM") -> AsyncGenerator[dict, None]:
+        """
+        Iterative tool-calling loop. Runs the model, executes any tool calls,
+        feeds results back, and repeats until the model produces a final text
+        response or the iteration cap is reached.
+        """
         is_gemma = self.model.startswith("gemma")
-        config = types.GenerateContentConfig(
-            tools=[{"function_declarations": self.tools.get_definitions()}],
-        )
-        if self.enable_thinking and not is_gemma:
-            config.thinking_config = types.ThinkingConfig(
-                thinking_level=types.ThinkingLevel[effort]
-            )
 
-        # Format messages for Gemma, prepending system prompt as first turn (internal only)
-        contents = [
-            types.Content(role="user",  parts=[types.Part(text=self.system_prompt)]),
-            types.Content(role="model", parts=[types.Part(text="Understood. I'm ready to assist.")]),
-        ]
-        # Track that we injected a system prompt to filter it from visible output
-        is_system_prompt_injected = True
-        for msg in messages:
-            contents.append(
-                types.Content(
-                    role="user" if msg["role"] == "tool" else msg["role"], 
-                    parts=[types.Part(text=msg["content"])]
+        for iteration in range(MAX_TOOL_ITERATIONS):
+            messages = [
+                {"role": m.role, "content": m.content} for m in self.state.messages
+            ]
+
+            config = types.GenerateContentConfig(
+                tools=[{"function_declarations": self.tools.get_definitions()}],
+            )
+            if self.enable_thinking and not is_gemma:
+                config.thinking_config = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel[effort]
                 )
-            )
 
-        # Stream response
-        full_text = ""
-        skipped_system_ack = False  # Track if we already skipped the initial ack
-        is_first_response = len(messages) == 0  # New session has no messages yet
-        async for chunk in self._stream_generate(contents, config):
-            # Synthetic usage event — store on state and skip rendering
-            if isinstance(chunk, dict) and chunk.get("__usage__"):
-                self.state.token_count = chunk["total_tokens"]
+            contents = [
+                types.Content(role="user",  parts=[types.Part(text=self.system_prompt)]),
+                types.Content(role="model", parts=[types.Part(text="Understood. I'm ready to assist.")]),
+            ]
+            is_first_response = len(messages) == 0
+            for msg in messages:
+                contents.append(
+                    types.Content(
+                        role="user" if msg["role"] == "tool" else msg["role"],
+                        parts=[types.Part(text=msg["content"])]
+                    )
+                )
+
+            full_text = ""
+            tool_call_found = None
+            skipped_system_ack = False
+
+            async for chunk in self._stream_generate(contents, config):
+                if isinstance(chunk, dict) and chunk.get("__usage__"):
+                    self.state.token_count = chunk["total_tokens"]
+                    continue
+
+                if isinstance(chunk, dict) and chunk.get("type") == "error":
+                    yield chunk
+                    return
+
+                if hasattr(chunk, "candidates") and chunk.candidates:
+                    for part in chunk.candidates[0].content.parts:
+                        if hasattr(part, "thought") and part.thought and getattr(part, "text", ""):
+                            if part.text.strip():
+                                yield {"type": "thinking", "chunk": part.text}
+
+                if getattr(chunk, "text", None):
+                    full_text += chunk.text
+                    is_system_ack = (
+                        is_first_response
+                        and not skipped_system_ack
+                        and full_text.strip() in [
+                            "Understood. I'm ready to assist.",
+                            "Understood. I'm ready to help.",
+                        ]
+                    )
+                    if not is_system_ack:
+                        yield {"type": "response", "chunk": chunk.text}
+                    else:
+                        skipped_system_ack = True
+
+                if hasattr(chunk, "candidates") and chunk.candidates:
+                    for part in chunk.candidates[0].content.parts:
+                        if hasattr(part, "function_call") and part.function_call:
+                            tool_call_found = part.function_call
+                            break
+
+            if tool_call_found:
+                args_str = json.dumps(tool_call_found.args) if tool_call_found.args else ""
+                self.state.add_message("model", f"Calling tool: {tool_call_found.name}({args_str})")
+
+                tool_name = tool_call_found.name
+                tool_args = dict(tool_call_found.args) if tool_call_found.args else {}
+
+                yield {"type": "tool_call", "name": tool_name, "args": tool_args}
+
+                tool = self.tools.get(tool_name)
+                if not tool:
+                    result = f"Error: Tool '{tool_name}' not found"
+                else:
+                    try:
+                        result = await tool.execute(**tool_args)
+                        if tool_name == "filesystem" and tool_args.get("operation") in ("write", "edit"):
+                            self.state.track_file_modification(tool_args.get("path", ""))
+                    except Exception as e:
+                        result = f"Error: {e}"
+
+                yield {"type": "tool_result", "name": tool_name, "result": result}
+                self.state.add_message("tool", f"Tool Result ({tool_name}):\n{result}")
+                # Continue the loop — model will see the tool result next iteration
                 continue
 
-            # Propagate errors yielded by _stream_generate
-            if isinstance(chunk, dict) and chunk.get("type") == "error":
-                yield chunk
-                return
+            # No tool call — model produced a final response
+            if full_text:
+                self.state.add_message("model", full_text)
+            return
 
-            # Extract thinking
-            if hasattr(chunk, "candidates") and chunk.candidates:
-                for part in chunk.candidates[0].content.parts:
-                    if hasattr(part, "thought") and part.thought and getattr(part, "text", ""):
-                        if part.text.strip():  # Filter out empty or whitespace-only thoughts
-                            yield {"type": "thinking", "chunk": part.text}
-
-            # Extract text
-            if getattr(chunk, "text", None):
-                full_text += chunk.text
-                # Skip system prompt acknowledgment only on first response of new session
-                is_system_ack = is_first_response and not skipped_system_ack and full_text.strip() in ["Understood. I'm ready to assist.", "Understood. I'm ready to help."]
-                if not is_system_ack:
-                    yield {"type": "response", "chunk": chunk.text}
-                else:
-                    skipped_system_ack = True  # Mark that we skipped it
-
-            # Extract tool calls
-            if hasattr(chunk, "candidates") and chunk.candidates:
-                for part in chunk.candidates[0].content.parts:
-                    if hasattr(part, "function_call") and part.function_call:
-                        # Record tool call in history as model message
-                        args_str = json.dumps(part.function_call.args) if part.function_call.args else ""
-                        self.state.add_message("model", f"Calling tool: {part.function_call.name}({args_str})")
-                        
-                        async for event in self._handle_tool_call(
-                            part.function_call, messages, contents, effort=effort
-                        ):
-                            yield event
-                        return
-
-        # Add model response to history
-        if full_text:
-            self.state.add_message("model", full_text)
-
-    async def _handle_tool_call(
-        self, function_call: any, messages: list[dict], contents: list, effort: str = "MEDIUM"
-    ) -> AsyncGenerator[dict, None]:
-        """Execute tool and recurse."""
-
-        tool_name = function_call.name
-        tool_args = dict(function_call.args) if function_call.args else {}
-
-        yield {"type": "tool_call", "name": tool_name, "args": tool_args}
-
-        # Execute tool
-        tool = self.tools.get(tool_name)
-        if not tool:
-            result = f"Error: Tool '{tool_name}' not found"
-        else:
-            try:
-                result = await tool.execute(**tool_args)
-                # Track file modifications
-                if tool_name == "filesystem" and tool_args.get("operation") in [
-                    "write",
-                    "edit",
-                ]:
-                    self.state.track_file_modification(tool_args.get("path", ""))
-            except Exception as e:
-                result = f"Error: {e}"
-
-        yield {"type": "tool_result", "name": tool_name, "result": result}
-
-        # Add tool result to history and continue
-        self.state.add_message("tool", f"Tool Result ({tool_name}):\n{result}")
-
-        # Recurse: call model again with updated history
-        new_messages = [
-            {"role": m.role, "content": m.content} for m in self.state.messages
-        ]
-        async for event in self._model_loop(new_messages, effort=effort):
-            yield event
+        # Exceeded iteration cap
+        yield {"type": "error", "error": f"Agent stopped after {MAX_TOOL_ITERATIONS} tool calls without a final response."}
 
     async def _compact(self) -> AsyncGenerator[dict, None]:
-        """Compact history when token limit approached."""
         yield {"type": "system", "message": "Compacting context... This may take a moment."}
 
         summary = await compact_history(
             self.client, self.model, self.state.messages
         )
 
-        # Replace history with summary
         self.state.messages = [
             Message(
                 role="model",
@@ -312,11 +291,7 @@ class Agent:
 
         yield {"type": "system", "message": "Context successfully compacted."}
 
-    async def _stream_generate(
-        self, contents, config
-    ) -> AsyncGenerator[dict, None]:
-        """Wrapper for streaming generation. Emits API chunks then a synthetic
-        __usage__ dict containing real token counts from the final chunk."""
+    async def _stream_generate(self, contents, config) -> AsyncGenerator[dict, None]:
         try:
             stream = await self.client.aio.models.generate_content_stream(
                 model=self.model, contents=contents, config=config
@@ -327,13 +302,13 @@ class Agent:
                     last_usage = chunk.usage_metadata
                 yield chunk
 
-            # After stream ends, yield a synthetic usage event so _model_loop
-            # can forward real token counts in the done event.
             if last_usage:
-                yield {"__usage__": True,
-                       "prompt_tokens": last_usage.prompt_token_count or 0,
-                       "response_tokens": last_usage.candidates_token_count or 0,
-                       "thoughts_tokens": last_usage.thoughts_token_count or 0,
-                       "total_tokens": last_usage.total_token_count or 0}
+                yield {
+                    "__usage__": True,
+                    "prompt_tokens": last_usage.prompt_token_count or 0,
+                    "response_tokens": last_usage.candidates_token_count or 0,
+                    "thoughts_tokens": last_usage.thoughts_token_count or 0,
+                    "total_tokens": last_usage.total_token_count or 0,
+                }
         except Exception as e:
             yield {"type": "error", "error": str(e)}
