@@ -529,8 +529,23 @@ export default function Home() {
   const [editName, setEditName] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(() => {
     if (typeof window === "undefined") return false;
-    return !getApiKey();
+    return !getApiKey();  // initial guess — may be overridden once backend responds
   });
+
+  // On mount, check backend for API key — overrides localStorage (persists across installs)
+  useEffect(() => {
+    const BACKEND_HTTP = (process.env.NEXT_PUBLIC_BACKEND_URL || "ws://127.0.0.1:47820")
+      .replace(/^ws/, "http");
+    fetch(`${BACKEND_HTTP}/api/config`)
+      .then(r => r.json())
+      .then((cfg: { api_key?: string }) => {
+        if (cfg.api_key) {
+          saveApiKey(cfg.api_key);
+          setShowOnboarding(false);
+        }
+      })
+      .catch(() => {/* backend not up yet — rely on localStorage */});
+  }, []);
   const [showSettings, setShowSettings] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
