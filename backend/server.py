@@ -1,4 +1,4 @@
-"""WebSocket server for agent backend."""
+"""FastAPI WebSocket server for agent backend."""
 
 import asyncio
 import json
@@ -7,9 +7,13 @@ import sys
 import logging
 from pathlib import Path
 from datetime import datetime
+from contextlib import asynccontextmanager
 
-import websockets
-
+import uvicorn
+from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from starlette.websockets import WebSocketDisconnect
 
 
 # Add parent to path so we can import agent_core
@@ -18,20 +22,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from agent_core import Agent
 from backend.message_types import MessageType, ClientMessage, ServerMessage
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 import json as _json
 _ROOT = Path(__file__).parent.parent
 
+
 def _get_config_path() -> Path:
-    """Get freecode.json path from user config directory."""
     if os.name == "nt":
         base = Path(os.environ.get("APPDATA", "~")).resolve()
     else:
         base = Path("~/.config").expanduser().resolve()
-    
     config_dir = base / "FreeCode"
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir / "freecode.json"
@@ -146,14 +148,9 @@ API_KEY = _cfg.get("api_key")
 MODEL = _cfg.get("model", "gemma-4-26b-a4b-it")
 THINKING = _cfg.get("thinking", True)
 
-# When running as a bundled sidecar (PyInstaller), sys.frozen is set.
-# Use the install directory as the default working directory so users
-# don't need to pick a folder during onboarding.
 def _default_working_dir() -> str:
     if getattr(sys, "frozen", False):
-        # Bundled exe: use the directory it was installed to
         return str(Path(sys.executable).parent)
-    # Dev mode: use config or current directory
     return _cfg.get("working_dir", ".")
 
 WORKING_DIR = _cfg.get("working_dir") or _default_working_dir()
@@ -162,9 +159,8 @@ HOST = os.environ.get("FC_BACKEND_HOST") or _cfg.get("backend_host", "localhost"
 
 
 async def pick_directory_async():
-    """Open a native folder picker dialog and return the path. Supports Windows (PS) and Linux (Zenity/KDialog)."""
-    if (os.name == "nt"):
-        # Windows PowerShell implementation using Shell.Application (more reliable than WinForms in subprocess)
+    """Open a native folder picker dialog and return the path."""
+    if os.name == "nt":
         ps_cmd = """
         $App = New-Object -ComObject Shell.Application
         $Folder = $App.BrowseForFolder(0, 'Select folder for FreeCode', 16 + 64, 0)
@@ -181,8 +177,6 @@ async def pick_directory_async():
             logger.error(f"Windows folder picker failed: {e}")
             return ""
     else:
-        # Linux / Posix implementation
-        # 1. Try zenity (GNOME)
         try:
             proc = await asyncio.create_subprocess_exec(
                 "zenity", "--file-selection", "--directory", "--title=Select folder for FreeCode",
@@ -193,8 +187,6 @@ async def pick_directory_async():
                 return stdout.decode().strip()
         except FileNotFoundError:
             pass
-
-        # 2. Try kdialog (KDE)
         try:
             proc = await asyncio.create_subprocess_exec(
                 "kdialog", "--getexistingdirectory", ".", "--title", "Select folder for FreeCode",
@@ -205,7 +197,6 @@ async def pick_directory_async():
                 return stdout.decode().strip()
         except FileNotFoundError:
             pass
-
         return ""
 
 
@@ -225,7 +216,6 @@ class AgentSession:
         self.last_seen = datetime.now()
 
     async def process_input(self, user_input: str, effort: str = "MEDIUM", working_dir: str = ".", model: str = None):
-        """Process user input and yield events, saving session to disk after each response."""
         self.active = True
         self.last_seen = datetime.now()
         if working_dir and working_dir != ".":
@@ -233,7 +223,6 @@ class AgentSession:
         try:
             async for event in self.agent.process_input(user_input, effort=effort, working_dir=working_dir, model=model):
                 yield event
-            # Persist session history to project directory after response
             wdir = working_dir if working_dir and working_dir != "." else str(self.agent.state.working_dir)
             msgs = [{"role": m.role, "content": m.content} for m in self.agent.state.messages]
             name = next((m["content"][:40] for m in msgs if m["role"] == "user"), "Session")
@@ -241,22 +230,19 @@ class AgentSession:
         finally:
             self.active = False
 
-    async def shutdown(self):
-        """Cleanup session on exit."""
-        logger.info(f"Shutting down session {self.session_id}...")
-        # Add any necessary cleanup logic here if needed in the future
-
 
 # Global sessions — keyed by session_id (UUID from client)
 sessions: dict[str, AgentSession] = {}
 MAX_SESSIONS = 20
 
 
-def _get_or_create_session(session_id: str, working_dir: str = None) -> AgentSession:
-    """Return existing session or create a new one. Evicts oldest if cap exceeded."""
+def _get_or_create_session(session_id: str, working_dir: str = None, api_key: str = None) -> AgentSession:
     if session_id in sessions:
-        sessions[session_id].last_seen = datetime.now()
-        return sessions[session_id]
+        s = sessions[session_id]
+        s.last_seen = datetime.now()
+        if api_key and api_key != getattr(s.agent.client, "_api_key", None):
+            s.agent.update_api_key(api_key)
+        return s
 
     if len(sessions) >= MAX_SESSIONS:
         oldest = min(sessions, key=lambda k: sessions[k].last_seen)
@@ -264,9 +250,8 @@ def _get_or_create_session(session_id: str, working_dir: str = None) -> AgentSes
         del sessions[oldest]
 
     fresh_cfg = _load_config()
-    fresh_api_key = fresh_cfg.get("api_key") or API_KEY
-    session = AgentSession(session_id, working_dir=working_dir, api_key=fresh_api_key)
-    # Restore history from disk if available
+    resolved_key = api_key or fresh_cfg.get("api_key") or API_KEY
+    session = AgentSession(session_id, working_dir=working_dir, api_key=resolved_key)
     if working_dir:
         saved = load_session_from_disk(working_dir, session_id)
         if saved and saved.get("messages"):
@@ -281,13 +266,93 @@ def _get_or_create_session(session_id: str, working_dir: str = None) -> AgentSes
     return session
 
 
-async def handle_client(websocket):
-    """Handle a single WebSocket client connection."""
+# ── FastAPI app ───────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    parent_pid = os.getppid()
+
+    async def watch_parent():
+        logger.info(f"Monitoring parent process {parent_pid}...")
+        while True:
+            await asyncio.sleep(2)
+            try:
+                os.kill(parent_pid, 0)
+            except (OSError, ProcessLookupError, AttributeError):
+                logger.info("Parent process gone, shutting down backend...")
+                os._exit(0)
+            except Exception:
+                pass
+
+    monitor = asyncio.create_task(watch_parent())
+    yield
+    monitor.cancel()
+
+
+app = FastAPI(title="FreeCode Backend", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── HTTP endpoints ────────────────────────────────────────────────────────────
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok", "model": MODEL, "working_dir": WORKING_DIR}
+
+
+@app.get("/api/config")
+async def get_config():
+    cfg = _load_config()
+    return {
+        "api_key": cfg.get("api_key", ""),
+        "model": cfg.get("model", MODEL),
+        "working_dir": cfg.get("working_dir", WORKING_DIR),
+        "recent_dirs": cfg.get("recent_dirs", []),
+        "thinking": cfg.get("thinking", THINKING),
+    }
+
+
+class ConfigUpdate(BaseModel):
+    api_key: str | None = None
+    model: str | None = None
+    working_dir: str | None = None
+    thinking: bool | None = None
+
+
+@app.post("/api/config")
+async def update_config(update: ConfigUpdate):
+    try:
+        cfg = _load_config()
+        if update.api_key is not None:
+            cfg["api_key"] = update.api_key
+            global API_KEY
+            API_KEY = update.api_key
+        if update.model is not None:
+            cfg["model"] = update.model
+        if update.working_dir is not None:
+            cfg["working_dir"] = update.working_dir
+        if update.thinking is not None:
+            cfg["thinking"] = update.thinking
+        _CONFIG_PATH.write_text(_json.dumps(cfg, indent=2))
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── WebSocket endpoint ────────────────────────────────────────────────────────
+
+@app.websocket("/")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
     session_id = None
     session = None
 
     try:
-        # Announce we're alive and provide recent dirs from config
         recents = []
         try:
             if _CONFIG_PATH.exists():
@@ -296,125 +361,133 @@ async def handle_client(websocket):
         except Exception:
             pass
 
-        # Always provide the current root and frontend directories as convenient defaults
         cwd = os.getcwd()
         for default_dir in [cwd, os.path.join(cwd, "frontend")]:
             if default_dir not in recents:
                 recents.append(default_dir)
 
-        await websocket.send(json.dumps({
-            "type": "hello", 
+        await websocket.send_text(json.dumps({
+            "type": "hello",
             "server": "freecode-backend",
-            "recent_dirs": recents
+            "recent_dirs": recents,
         }))
 
-        async for raw_message in websocket:
+        while True:
+            try:
+                raw_message = await websocket.receive_text()
+            except WebSocketDisconnect:
+                logger.info(f"[{session_id}] Client disconnected")
+                break
+
             try:
                 data = json.loads(raw_message)
 
-                # Handle lightweight messages before session creation
                 if data.get("type") == "pick_folder":
                     path = await pick_directory_async()
-                    await websocket.send(json.dumps({"type": "folder_picked", "path": path or ""}))
+                    await websocket.send_text(json.dumps({"type": "folder_picked", "path": path or ""}))
                     continue
 
                 msg = ClientMessage.from_json(data)
 
-                # Resolve session from client-provided session_id
+                incoming_api_key = data.get("api_key")
+                if incoming_api_key:
+                    _save_api_key(incoming_api_key)
+
                 client_session_id = data.get("session_id") or "default"
                 if session is None or session_id != client_session_id:
                     session_id = client_session_id
                     working_dir_hint = data.get("working_dir") or WORKING_DIR
-                    session = _get_or_create_session(session_id, working_dir=working_dir_hint)
-
-                    # Acknowledge session
-                    await websocket.send(json.dumps({
+                    session = _get_or_create_session(
+                        session_id,
+                        working_dir=working_dir_hint,
+                        api_key=incoming_api_key,
+                    )
+                    await websocket.send_text(json.dumps({
                         "type": "session",
                         "session_id": session_id,
-                        "messages": [{"role": m.role, "content": m.content} for m in session.agent.state.messages]
+                        "messages": [{"role": m.role, "content": m.content} for m in session.agent.state.messages],
                     }))
+                elif incoming_api_key:
+                    session.agent.update_api_key(incoming_api_key)
 
                 if msg.type == MessageType.USER_INPUT:
                     if not msg.text:
-                        await send_error(websocket, "user_input requires 'text' field")
+                        await _send_error(websocket, "user_input requires 'text' field")
                         continue
 
-                    # Internal init ping — just registers session + working dir, no response needed
                     if msg.text == "__init__":
                         logger.info(f"[{session_id}] Session initialized, working_dir={session.agent.state.working_dir}")
-                        if data.get("api_key"):
-                            _save_api_key(data["api_key"])
-                            session.agent.client.api_key = data["api_key"]
+                        continue
+
+                    if session.active:
+                        await _send_error(websocket, "Session is busy — wait for the current response to finish.")
                         continue
 
                     logger.info(f"[{session_id}] User input: {msg.text[:60]}...")
-
                     effort = msg.effort or "MEDIUM"
                     working_dir = msg.working_dir or str(session.agent.state.working_dir)
                     model = msg.model or MODEL
                     async for event in session.process_input(msg.text, effort=effort, working_dir=working_dir, model=model):
                         server_msg = _event_to_server_message(event)
-                        await websocket.send(json.dumps(server_msg.to_json()))
+                        await websocket.send_text(json.dumps(server_msg.to_json()))
 
                 elif msg.type == MessageType.CANCEL:
                     if session and session.active:
                         logger.info(f"[{session_id}] Cancel requested")
-                        await send_system(websocket, "Cancellation not yet implemented")
+                        await _send_system(websocket, "Cancellation not yet implemented")
 
                 elif msg.type == MessageType.PICK_FOLDER:
-                    logger.info(f"[{session_id}] Settings folder picker requested")
                     path = await pick_directory_async()
-                    await websocket.send(json.dumps({"type": "folder_picked", "path": path or ""}))
+                    await websocket.send_text(json.dumps({"type": "folder_picked", "path": path or ""}))
 
                 elif msg.type == MessageType.PICK_DIR:
-                    logger.info(f"[{session_id}] Directory picker requested")
                     path = await pick_directory_async()
                     if path and session:
                         session.agent.state.working_dir = Path(path).resolve()
                         _save_working_dir(path)
-                        await send_system(websocket, f"Working directory: {path}")
+                        await _send_system(websocket, f"Working directory: {path}")
                     else:
-                        await send_system(websocket, "No folder selected")
+                        await _send_system(websocket, "No folder selected")
 
                 elif msg.type == MessageType.LIST_SESSIONS:
                     wdir = data.get("working_dir") or (str(session.agent.state.working_dir) if session else ".")
                     sess_list = list_sessions_from_disk(wdir)
-                    await websocket.send(json.dumps({"type": "sessions_list", "sessions": sess_list, "working_dir": wdir}))
+                    await websocket.send_text(json.dumps({
+                        "type": "sessions_list",
+                        "sessions": sess_list,
+                        "working_dir": wdir,
+                    }))
 
                 elif msg.type == MessageType.PING:
-                    await websocket.send(json.dumps(ServerMessage(type=MessageType.SYSTEM, message="pong").to_json()))
+                    await websocket.send_text(json.dumps(ServerMessage(type=MessageType.SYSTEM, message="pong").to_json()))
 
                 else:
-                    await send_error(websocket, f"Unknown message type: {msg.type}")
+                    await _send_error(websocket, f"Unknown message type: {msg.type}")
 
             except json.JSONDecodeError:
-                await send_error(websocket, "Invalid JSON")
+                await _send_error(websocket, "Invalid JSON")
             except ValueError as e:
-                await send_error(websocket, str(e))
+                await _send_error(websocket, str(e))
             except Exception as e:
                 logger.exception(f"Error processing message: {e}")
-                await send_error(websocket, f"Internal error: {e}")
+                await _send_error(websocket, f"Internal error: {e}")
 
-    except websockets.exceptions.ConnectionClosed:
-        logger.info(f"[{session_id}] Client disconnected")
     except Exception as e:
-        logger.exception(f"WebSocket error: {e}")
+        logger.exception(f"WebSocket handler error: {e}")
 
 
-async def send_system(websocket, message: str):
+async def _send_system(websocket: WebSocket, message: str):
     msg = ServerMessage(type=MessageType.SYSTEM, message=message)
-    await websocket.send(json.dumps(msg.to_json()))
+    await websocket.send_text(json.dumps(msg.to_json()))
 
 
-async def send_error(websocket, error: str):
+async def _send_error(websocket: WebSocket, error: str):
     msg = ServerMessage(type=MessageType.ERROR, error=error)
-    await websocket.send(json.dumps(msg.to_json()))
+    await websocket.send_text(json.dumps(msg.to_json()))
 
 
 def _event_to_server_message(event: dict) -> ServerMessage:
-    """Convert an agent event dict to a ServerMessage."""
     event_type = event.get("type")
-
     if event_type == "thinking":
         return ServerMessage(type=MessageType.THINKING, chunk=event.get("chunk"))
     elif event_type == "tool_call":
@@ -438,48 +511,12 @@ def _event_to_server_message(event: dict) -> ServerMessage:
         return ServerMessage(type=MessageType.ERROR, error=f"Unknown event type: {event_type}")
 
 
-async def main():
-    """Start WebSocket server."""
-    logger.info(f"Starting server on ws://{HOST}:{PORT}")
-    logger.info(f"Model: {MODEL}, Thinking: {THINKING}, WorkingDir: {WORKING_DIR}")
-
-    # Setup parent process monitor to avoid dangling server
-    parent_pid = os.getppid()
-    
-    async def watch_parent():
-        """Monitor parent process and exit if it dies."""
-        logger.info(f"Monitoring parent process {parent_pid}...")
-        while True:
-            await asyncio.sleep(2)
-            try:
-                # On Windows/Unix, os.kill(pid, 0) checks if process exists
-                os.kill(parent_pid, 0)
-            except (OSError, ProcessLookupError, AttributeError):
-                logger.info("Parent process gone, shutting down backend...")
-                # Gracefully close all active sessions
-                for session in sessions.values():
-                    logger.info(f"Closing session {session.session_id}")
-                # Use os._exit to bypass any hanging loops or blocked tasks
-                os._exit(0)
-            except Exception:
-                pass
-
-    # Start the server and the monitor
+def main():
     bind_host = "127.0.0.1" if HOST == "localhost" else HOST
-    
-    server_task = websockets.serve(handle_client, bind_host, PORT)
-    monitor_task = asyncio.create_task(watch_parent())
-
-    async with server_task:
-        logger.info(f"Server listening on {bind_host}:{PORT}")
-        try:
-            await asyncio.Future()  # Wait forever
-        except asyncio.CancelledError:
-            pass
-        finally:
-            monitor_task.cancel()
-
+    logger.info(f"Starting FastAPI server on ws://{bind_host}:{PORT}")
+    logger.info(f"Model: {MODEL}, Thinking: {THINKING}, WorkingDir: {WORKING_DIR}")
+    uvicorn.run(app, host=bind_host, port=PORT, log_level="warning")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
