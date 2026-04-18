@@ -11,6 +11,7 @@ from google.genai import types
 
 from .state import SessionState, Message
 from .tools import ToolRegistry, FileSystemMCP, ShellMCP
+from .tools.mcp_server import AddMcpServerTool
 from .mcp_manager import McpManager
 from .compaction import should_compact, compact_history
 
@@ -50,6 +51,7 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 # Using your tools
  - `filesystem` tool: use for all file operations (ls, read, write, edit, find, delete). Do NOT use shell for file operations.
  - `shell` tool: use for build commands, tests, git, package managers.
+ - `add_mcp_server` tool: use when the user asks to add an MCP server (e.g. sqlite). It writes to the config and hot-reloads the connection immediately.
  - IMPORTANT FOR SHELL: You are running on {plat}. If it is Windows, write valid Powershell or CMD commands (e.g. use `Remove-Item` instead of `rm`, `Get-ChildItem` instead of `ls` if needed, etc.).
  - Do NOT try to run `bash` commands like `rm -rf` on Windows unless running in WSL or Git Bash.
 
@@ -84,11 +86,13 @@ class Agent:
         self.state = SessionState(working_dir=working_dir, token_limit=token_limit)
         self.system_prompt = _build_system_prompt(working_dir, model)
 
+        self.mcp_manager = McpManager()
+        
         self.tools = ToolRegistry()
         self.tools.register(FileSystemMCP(working_dir=working_dir))
         self.tools.register(ShellMCP())
+        self.tools.register(AddMcpServerTool(self.mcp_manager, self.tools))
         
-        self.mcp_manager = McpManager()
         asyncio.create_task(self.mcp_manager.connect_all(self.tools))
 
     def update_api_key(self, api_key: str):
@@ -119,6 +123,7 @@ class Agent:
         if is_clear:
             self.state.messages = []
             self.state.token_count = 0
+            yield {"type": "clear"}
             yield {"type": "system", "message": "Conversation history cleared."}
             yield {"type": "done", "tokens_used": 0, "token_limit": self.state.token_limit, "context_pct": 0.0}
             return
@@ -259,6 +264,8 @@ class Agent:
                         result = await tool.execute(**tool_args)
                         if tool_name == "filesystem" and tool_args.get("operation") in ("write", "edit"):
                             self.state.track_file_modification(tool_args.get("path", ""))
+                        elif tool_name == "add_mcp_server":
+                            yield {"type": "config_changed", "message": "MCP Server configuration changed"}
                     except Exception as e:
                         result = f"Error: {e}"
 
@@ -289,6 +296,8 @@ class Agent:
             )
         ]
 
+        yield {"type": "clear"}
+        yield {"type": "response", "chunk": f"Previous context summary:\n\n{summary}"}
         yield {"type": "system", "message": "Context successfully compacted."}
 
     async def _stream_generate(self, contents, config) -> AsyncGenerator[dict, None]:

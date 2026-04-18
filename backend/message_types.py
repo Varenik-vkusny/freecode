@@ -22,9 +22,11 @@ class MessageType(str, Enum):
     TOOL_RESULT = "tool_result"
     RESPONSE = "response"
     SYSTEM = "system"
+    CLEAR = "clear"
     DONE = "done"
     ERROR = "error"
     FOLDER_PICKED = "folder_picked"
+    CONFIG_CHANGED = "config_changed"
 
 
 @dataclass

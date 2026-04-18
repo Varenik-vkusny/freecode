@@ -30,6 +30,7 @@ class McpManager:
         self.config_path = Path(config_path)
         self.exit_stack = AsyncExitStack()
         self.sessions: Dict[str, ClientSession] = {}
+        self.registered_tool_names: List[str] = []
 
     def load_config(self):
         if not self.config_path.exists():
@@ -60,8 +61,18 @@ class McpManager:
                 for tool in tools.tools:
                     wrapper = McpToolWrapper(tool.name, tool.description or "", tool.inputSchema or {}, session)
                     tool_registry.register(wrapper)
+                    self.registered_tool_names.append(tool.name)
             except Exception as e:
                 print(f"Failed to connect to MCP server {name}: {e}")
+
+    async def reload_all(self, tool_registry):
+        for name in self.registered_tool_names:
+            tool_registry.unregister(name)
+        self.registered_tool_names = []
+        await self.close()
+        self.exit_stack = AsyncExitStack()
+        self.sessions.clear()
+        await self.connect_all(tool_registry)
 
     async def close(self):
         await self.exit_stack.aclose()
