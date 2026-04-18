@@ -419,6 +419,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         logger.info(f"[{session_id}] Session initialized, working_dir={session.agent.state.working_dir}")
                         continue
 
+                    current_key = _load_config().get("api_key") or API_KEY
+                    if not current_key:
+                        await _send_error(websocket, "No API key configured. Open settings to add your Gemini API key.")
+                        continue
+
                     if session.active:
                         await _send_error(websocket, "Session is busy — wait for the current response to finish.")
                         continue

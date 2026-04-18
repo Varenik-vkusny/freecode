@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import OnboardingModal from "./components/OnboardingModal";
 import SettingsPanel from "./components/SettingsPanel";
-import { getApiKey, saveApiKey, getConfigFromBackend } from "./lib/config";
+import { getApiKey, saveApiKey } from "./lib/config";
 
 import { FolderIcon, GearIcon, EditIcon, SearchIcon, PlusIcon, TrashIcon } from "./components/Icons";
 import { Popover } from "./components/Popover";
@@ -287,7 +287,7 @@ function Welcome({ show, onRun }: { show: boolean; onRun: (cmd: string) => void 
       </div>
       <h1 className="splash-title">FREECODE</h1>
       <p className="splash-subtitle">Your personal agentic coding assistant.</p>
-      
+
       <div className="splash-hints">
         <div className="hint-row clickable" onClick={() => onRun("/model")}>
           <span className="hint-key">/model</span> Choose your intelligence
@@ -298,6 +298,61 @@ function Welcome({ show, onRun }: { show: boolean; onRun: (cmd: string) => void 
         <div className="hint-row clickable" onClick={() => onRun("/help")}>
           <span className="hint-key">/help</span> Review all commands
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectSelectScreen({ onSelect, onBrowse, recents }: {
+  onSelect: (dir: string) => void;
+  onBrowse: () => void;
+  recents: string[];
+}) {
+  const [val, setVal] = useState("");
+  const localRecents = loadRecentDirs();
+  const allRecents = Array.from(new Set([...recents, ...localRecents])).slice(0, 6);
+
+  const submit = (dir: string) => {
+    const d = dir.trim();
+    if (!d) return;
+    saveRecentDir(d);
+    onSelect(d);
+  };
+
+  return (
+    <div className="project-select-screen">
+      <div className="project-select-card">
+        <div className="splash-bird" style={{ marginBottom: 8 }}>
+          <Image src="/logo.svg" width={48} height={48} alt="FreeCode Logo" priority />
+        </div>
+        <h1 className="splash-title" style={{ fontSize: 22, marginBottom: 4 }}>Open a Project</h1>
+        <p className="splash-subtitle" style={{ marginBottom: 24 }}>Select the folder you want to work in</p>
+
+        <div className="dir-input-wrapper" style={{ width: "100%", marginBottom: 12 }}>
+          <input
+            className="dir-input"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submit(val); }}
+            placeholder="C:\path\to\project"
+            autoFocus
+          />
+          <button className="dir-browse-icon" onClick={onBrowse} title="Browse...">
+            <FolderIcon />
+          </button>
+        </div>
+
+        {allRecents.length > 0 && (
+          <div className="dir-recents-section" style={{ width: "100%" }}>
+            <div className="dir-recents-label">Recent</div>
+            {allRecents.map(d => (
+              <div key={d} className="dir-recent-row" onClick={() => submit(d)}>
+                <FolderIcon />
+                <span className="dir-recent-text" title={d}>{d}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -443,7 +498,8 @@ export default function Home() {
     try {
       const id = getOrCreateSessionId();
       const sessions = JSON.parse(localStorage.getItem("freecode:sessions") || "{}");
-      return sessions[id]?.messages || [];
+      // Filter out stale error messages that shouldn't persist across sessions
+      return (sessions[id]?.messages || []).filter((m: MsgKind) => m.kind !== "error");
     } catch {
       return [];
     }
@@ -513,22 +569,6 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
-    // Initial config sync from backend to avoid repeated onboarding and restore project
-    getConfigFromBackend().then(cfg => {
-      if (cfg?.api_key) {
-        backendHasKey.current = true;
-        saveApiKey(cfg.api_key);
-        setShowOnboarding(false);
-
-
-        // Restore last project if no local state
-        const localDir = localStorage.getItem("freecode:working_dir");
-        if (cfg.working_dir && !localDir) {
-          setWorkingDir(cfg.working_dir);
-          localStorage.setItem("freecode:working_dir", cfg.working_dir);
-        }
-      }
-    });
   }, []);
 
   // Track pending tool calls so we can attach results
@@ -761,26 +801,26 @@ export default function Home() {
         const savedSes = (() => { try { return JSON.parse(localStorage.getItem("freecode:sessions") || "{}"); } catch { return {}; } })();
         const sesId = localStorage.getItem(SESSION_ID_KEY) || sessionId;
         const sesDir = savedSes[sesId]?.workingDir || savedDir;
+        const initMsg: Record<string, string> = {
+          type: "user_input",
+          text: "__init__",
+          session_id: sesId,
+          model: localStorage.getItem("freecode:model") || DEFAULT_MODEL
+        };
+        if (sesDir) initMsg.working_dir = sesDir;
+        if (!backendHasKey.current) {
+          const apiKey = localStorage.getItem("freecode:api_key");
+          if (apiKey) initMsg.api_key = apiKey;
+        }
+        ws.send(JSON.stringify(initMsg));
         if (sesDir) {
-          const initMsg: Record<string, string> = {
-            type: "user_input",
-            text: "__init__",
-            session_id: sesId,
-            working_dir: sesDir,
-            model: localStorage.getItem("freecode:model") || DEFAULT_MODEL
-          };
-          if (!backendHasKey.current) {
-            const apiKey = localStorage.getItem("freecode:api_key");
-            if (apiKey) initMsg.api_key = apiKey;
-          }
-          ws.send(JSON.stringify(initMsg));
-          // Request sessions list for this working dir
           ws.send(JSON.stringify({ type: "list_sessions", working_dir: sesDir, session_id: sesId }));
         }
       };
       ws.onclose = () => {
         if (wsRef.current === ws) {
           setConnected(false);
+          setWorking(false); // Never leave UI stuck if backend drops mid-response
           wsRef.current = null;
         }
         if (!dead) retryTimeout = setTimeout(connect, retryDelay = Math.min(retryDelay * 2, 10000));
@@ -1044,8 +1084,8 @@ export default function Home() {
         />
       )}
 
-      {/* Directory picker — shown when no project or user opens it */}
-      {(!workingDir || dirPickerOpen) && !showOnboarding && (
+      {/* Directory picker — shown when user explicitly opens it (already has a project) */}
+      {dirPickerOpen && workingDir && !showOnboarding && (
         <DirPicker
           onSelect={(dir) => { handleDirSelect(dir); setDirPickerOpen(false); }}
           onBrowse={async () => {
@@ -1223,8 +1263,28 @@ export default function Home() {
         </div>
 
         <div className="chat-col" onClick={() => { if (sidebarOpen) setSidebarOpen(false); }}>
-          {/* Messages area */}
-          <div className="messages-area" ref={messagesAreaRef}>
+          {/* No-project state */}
+          {!workingDir && !showOnboarding && (
+            <ProjectSelectScreen
+              onSelect={(dir) => { handleDirSelect(dir); }}
+              onBrowse={async () => {
+                const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+                if (isTauri) {
+                  const { open } = await import("@tauri-apps/plugin-dialog");
+                  const picked = await open({ directory: true, multiple: false });
+                  if (picked) handleDirSelect(picked as string);
+                  return;
+                }
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({ type: "pick_dir", session_id: sessionId }));
+                }
+              }}
+              recents={serverRecents}
+            />
+          )}
+
+          {/* Messages area — only shown when project is selected */}
+          {workingDir && <div className="messages-area" ref={messagesAreaRef}>
             <Welcome show={messages.length === 0} onRun={runCommand} />
             {messages.map(renderMessage)}
             {working && (
@@ -1233,17 +1293,18 @@ export default function Home() {
               </div>
             )}
             <div ref={bottomRef} />
-          </div>
+          </div>}
 
-          {/* Input Section */}
+          {/* Input Section — only shown when project is selected */}
+          {workingDir && (
           <div className="input-outer">
             {connectionError && <div className="connection-error-banner">✗ {connectionError}</div>}
             {!connected ? (
               <div className="input-area input-area-offline">
                 <span className="status-dot offline">●</span>
                 <span className="input-offline-msg">
-                  {typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ 
-                    ? "Disconnected — Attempting to reconnect..." 
+                  {typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__
+                    ? "Disconnected — Attempting to reconnect..."
                     : "Disconnected — run <code>start.bat</code> to reconnect"}
                 </span>
               </div>
@@ -1284,6 +1345,7 @@ export default function Home() {
               </div>
             )}
           </div>
+          )}
 
           {/* Removed standalone ctx-bar to prevent layout shift */}
         </div>
