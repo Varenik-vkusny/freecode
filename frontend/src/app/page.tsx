@@ -531,6 +531,7 @@ export default function Home() {
     if (typeof window === "undefined") return false;
     return !getApiKey();  // initial guess — may be overridden once backend responds
   });
+  const [showReloadBanner, setShowReloadBanner] = useState(false);
 
   // On mount, fetch backend config with retries — backend may still be starting up
   useEffect(() => {
@@ -655,10 +656,17 @@ export default function Home() {
       return;
     }
 
+    if (msg.type === "config_changed") {
+      setShowReloadBanner(true);
+      return;
+    }
+
     setMessages(prev => {
       const next = [...prev];
 
       switch (msg.type) {
+        case "clear":
+          return [];
         case "thinking": {
           const last = next[next.length - 1];
           if (last?.kind === "thinking" && !last.done) {
@@ -1256,6 +1264,17 @@ export default function Home() {
               }}
               recents={serverRecents}
             />
+          )}
+
+          {/* Reload banner for config changes */}
+          {showReloadBanner && (
+            <div className="reload-banner" style={{ background: "var(--accent-blue)", color: "white", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 16px 0", borderRadius: "8px", zIndex: 10 }}>
+              <span style={{ fontSize: 14 }}>Configuration changed. A reload is required to apply changes.</span>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button onClick={() => window.location.reload()} style={{ padding: "6px 14px", background: "white", color: "black", borderRadius: "4px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>Reload</button>
+                <button onClick={() => setShowReloadBanner(false)} style={{ padding: "6px 14px", background: "transparent", color: "white", border: "1px solid rgba(255,255,255,0.4)", borderRadius: "4px", cursor: "pointer", fontSize: 13 }}>Dismiss</button>
+              </div>
+            </div>
           )}
 
           {/* Messages area — only shown when project is selected */}

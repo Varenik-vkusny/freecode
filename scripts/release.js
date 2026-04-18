@@ -26,10 +26,19 @@ console.log(`Updated Cargo.toml to ${semver}`);
 
 console.log(`\nCommitting version bump...`);
 execSync(`git add src-tauri/tauri.conf.json src-tauri/Cargo.toml`, { stdio: "inherit" });
-execSync(`git commit -m "chore: bump version to ${semver}"`, { stdio: "inherit" });
+try {
+  execSync(`git commit -m "chore: bump version to ${semver}"`, { stdio: "inherit" });
+} catch {
+  console.log("Nothing to commit, version already at " + semver);
+}
 
 console.log(`\nTagging ${tag}...`);
-execSync(`git tag -s ${tag} -m "Release ${tag}"`, { stdio: "inherit" });
+try {
+  execSync(`git tag -s ${tag} -m "Release ${tag}"`, { stdio: "inherit" });
+} catch {
+  console.error(`Tag ${tag} already exists. Bump the version first.`);
+  process.exit(1);
+}
 
 console.log(`Pushing...`);
 execSync(`git push origin main ${tag}`, { stdio: "inherit" });

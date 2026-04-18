@@ -545,6 +545,10 @@ def _event_to_server_message(event: dict) -> ServerMessage:
         return ServerMessage(type=MessageType.RESPONSE, chunk=event.get("chunk"))
     elif event_type == "system":
         return ServerMessage(type=MessageType.SYSTEM, message=event.get("message"))
+    elif event_type == "clear":
+        return ServerMessage(type=MessageType.CLEAR)
+    elif event_type == "config_changed":
+        return ServerMessage(type=MessageType.CONFIG_CHANGED, message=event.get("message", "Configuration changed"))
     elif event_type == "done":
         return ServerMessage(
             type=MessageType.DONE,

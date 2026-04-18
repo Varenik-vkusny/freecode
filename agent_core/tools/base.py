@@ -1,7 +1,7 @@
 """Base tool class and registry."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from typing import Any, Callable, Dict
 from dataclasses import dataclass
 
 
@@ -36,6 +36,11 @@ class ToolRegistry:
     def register(self, tool: BaseTool):
         """Register a tool by name."""
         self._tools[tool.definition.name] = tool
+
+    def unregister(self, name: str):
+        """Unregister a tool by name."""
+        if name in self._tools:
+            del self._tools[name]
 
     def get(self, name: str) -> BaseTool | None:
         """Get tool by name."""
